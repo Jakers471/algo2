@@ -43,6 +43,29 @@
       font-size: 12px;
       color: #6b7280;
     }
+    header .spacer { flex: 1 1 auto; }
+    #tf-bar {
+      display: flex;
+      gap: 4px;
+    }
+    #tf-bar button {
+      font: inherit;
+      font-size: 12px;
+      color: #9aa4b2;
+      background: #10141d;
+      border: 1px solid #1c2230;
+      border-radius: 5px;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: color .12s, background .12s, border-color .12s;
+    }
+    #tf-bar button:hover { color: #d1d4dc; border-color: #2a3140; }
+    #tf-bar button.active {
+      color: #0e1117;
+      background: #26a69a;
+      border-color: #26a69a;
+      font-weight: 600;
+    }
     #chart {
       flex: 1 1 auto;
       min-height: 0;
@@ -54,7 +77,9 @@
     <header>
       <span class="dot"></span>
       <h1>volume_profile_algo</h1>
-      <span class="sub">Lightweight Charts v4 · dark</span>
+      <span class="sub" id="status">NQ · loading…</span>
+      <span class="spacer"></span>
+      <div id="tf-bar"></div>
     </header>
     <div id="chart"></div>
   </div>

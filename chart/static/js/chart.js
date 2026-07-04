@@ -2,10 +2,13 @@
  * TradingView Lightweight Charts v4, dark theme.
  * Candlesticks + volume histogram (overlaid on a scaled bottom band).
  *
- * Data: loadData() tries the Flask API (/api/candles); if that isn't
- * available (e.g. opened directly as a file), it falls back to generated
- * sample data so the chart always renders.
+ * Data: served by chart/server.py from the NQ parquets — the API returns the
+ * last ~10k bars for the selected timeframe. A timeframe bar in the header
+ * switches between 1m/5m/15m/60m/1d. If no backend is reachable (page opened
+ * as a bare file), it falls back to generated sample data so it still renders.
  */
+
+const SYMBOL = 'NQ';
 
 const COLORS = {
   background: '#0e1117',
@@ -67,9 +70,23 @@ function createChart() {
   return { chart, candleSeries, volumeSeries };
 }
 
-async function loadData() {
+async function fetchTimeframes() {
   try {
-    const res = await fetch('/api/candles', { cache: 'no-store' });
+    const res = await fetch(`/api/timeframes?symbol=${SYMBOL}`, { cache: 'no-store' });
+    if (res.ok) {
+      const j = await res.json();
+      if (j.timeframes && j.timeframes.length) return j.timeframes;
+    }
+  } catch (_) { /* no backend */ }
+  return [];
+}
+
+async function loadData(tf) {
+  try {
+    const res = await fetch(
+      `/api/candles?symbol=${SYMBOL}&tf=${tf}&limit=10000`,
+      { cache: 'no-store' }
+    );
     if (res.ok) return await res.json();
   } catch (_) {
     /* no backend — fall through to sample data */
@@ -102,13 +119,10 @@ function generateSampleData(bars) {
   return { candles, volumes };
 }
 
-async function main() {
-  const { chart, candleSeries, volumeSeries } = createChart();
-  const data = await loadData();
-
+function render(chart, candleSeries, volumeSeries, data) {
   candleSeries.setData(data.candles);
 
-  // If the backend didn't supply per-bar volume colors, tint them here.
+  // Tint each volume bar by its candle's direction.
   const volumes = (data.volumes || []).map((v, i) => {
     if (v.color) return v;
     const c = data.candles[i];
@@ -117,6 +131,50 @@ async function main() {
   volumeSeries.setData(volumes);
 
   chart.timeScale().fitContent();
+}
+
+function buildTimeframeBar(timeframes, active, onSelect) {
+  const bar = document.getElementById('tf-bar');
+  bar.innerHTML = '';
+  const buttons = {};
+  for (const tf of timeframes) {
+    const b = document.createElement('button');
+    b.textContent = tf;
+    b.classList.toggle('active', tf === active);
+    b.addEventListener('click', () => onSelect(tf));
+    bar.appendChild(b);
+    buttons[tf] = b;
+  }
+  return buttons;
+}
+
+function setStatus(text) {
+  const el = document.getElementById('status');
+  if (el) el.textContent = text;
+}
+
+async function main() {
+  const { chart, candleSeries, volumeSeries } = createChart();
+
+  let timeframes = await fetchTimeframes();
+  const hasBackend = timeframes.length > 0;
+  if (!hasBackend) timeframes = ['sample'];
+
+  let current = timeframes.includes('5m') ? '5m' : timeframes[0];
+  let buttons = {};
+
+  async function select(tf) {
+    current = tf;
+    for (const [k, b] of Object.entries(buttons)) b.classList.toggle('active', k === tf);
+    setStatus(`${SYMBOL} · ${tf} · loading…`);
+    const data = await loadData(tf);
+    render(chart, candleSeries, volumeSeries, data);
+    const n = (data.candles || []).length;
+    setStatus(hasBackend ? `${SYMBOL} · ${tf} · ${n.toLocaleString()} bars` : 'sample data (no backend)');
+  }
+
+  buttons = buildTimeframeBar(timeframes, current, select);
+  await select(current);
 }
 
 document.addEventListener('DOMContentLoaded', main);
