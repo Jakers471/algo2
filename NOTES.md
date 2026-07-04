@@ -5,6 +5,31 @@ dated + timed and terse (≤50 lines). Split into `notes/` when this gets large.
 
 ---
 
+## 2026-07-03 21:01 CDT — Replay v1 (the loop that becomes the backtest)
+
+**Built minimal replay.** Backend: added `asof` param to the sessions +
+volume_profile endpoints — computes on `df[df.index <= asof]` (same functions, a
+growing slice). Frontend: `replay.js` (Play/Pause, 1x/2x/4x, step, scrubber, log
+line) + a `replay` button. Each frame reveals bars 0..i, recomputes indicators
+as-of `candles[i].time`, tracks the view window, and logs
+`session · POC/VAH/VAL · vol`. Enter = from the left of the current view; exit =
+restore live.
+
+**Verified:** backend asof grows the NY profile correctly (vol 66k→227k→357k→
+470k→562k; POC/VAH/VAL evolve; 100% == full-compute exactly). Controller: start/
+step/seek/speed/play(4x ≈140ms/bar)/pause/exit all pass.
+
+**Why this matters (mental model):** replay IS the backtest loop. `for i: frame =
+df.iloc[:i]; levels = compute_*(frame)`. Backtest = same loop + a strategy reading
+each frame emitting trades; replay-with-trades = draw those on the same frames.
+So the strategy/backtest work slots straight onto this.
+
+**v1 shortcuts to revisit:** per-frame API calls (sessions + vp overlay + vp log)
+— fine on localhost, can share one fetch later; view tracks a fixed window; no
+trade markers yet (come with the strategy).
+
+---
+
 ## 2026-07-03 20:49 CDT — Click-a-session levels + REPLAY vision
 
 **Built (Jake's pick — on-chart, no module):** click a session's span →

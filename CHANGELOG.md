@@ -50,6 +50,12 @@ All notable changes to this project. Format loosely follows
 - `.gitignore` excluding the large parquet data files.
 
 ### Added
+- **Replay tool:** step bars forward from any point at 1x/2x/4x while the volume
+  profile / POC / VAH / VAL and session levels recompute as-of each bar, with a
+  live log line (`session · POC/VAH/VAL · vol`). Backend gains an `asof` param
+  (compute on bars `<= asof` — the same math on a growing slice); frontend adds
+  `replay.js` (Play/Pause, speed, step, scrubber) wired to a `replay` button.
+  Enter starts from the left of the current view; exit restores the live chart.
 - **Click a session -> its levels on the chart:** clicking a session's time span
   overlays that session's H / VAH / POC / VAL / L as labeled lines (from the
   config's `row_size`/`value_area_pct`), with a faint span + value-area shade.

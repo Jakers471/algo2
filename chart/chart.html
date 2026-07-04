@@ -130,6 +130,32 @@
       display: inline-block;
       flex: 0 0 auto;
     }
+    /* Replay */
+    #replayBtn {
+      font: inherit; font-size: 12.5px; margin-left: 8px;
+      color: var(--ink2); background: var(--s); border: 1px solid var(--ring);
+      border-radius: 7px; padding: 5px 11px; cursor: pointer;
+    }
+    #replayBtn:hover { color: var(--ink); }
+    #replayBtn.active { background: var(--acc); border-color: var(--acc); color: #fff; }
+    #replay {
+      flex: 0 0 auto; display: none; align-items: center; gap: 8px;
+      padding: 6px 12px; border-top: 1px solid var(--ring);
+      background: var(--pg); font-size: 12px;
+    }
+    #replay .rp-grp { display: flex; gap: 3px; }
+    #replay .rp-btn {
+      font: inherit; font-size: 12px; color: var(--ink2); background: var(--s);
+      border: 1px solid var(--ring); border-radius: 6px; padding: 3px 9px; cursor: pointer;
+    }
+    #replay .rp-btn:hover { color: var(--ink); }
+    #replay .rp-btn.on { background: var(--acc); border-color: var(--acc); color: #fff; }
+    #replay .rp-slider { flex: 1; accent-color: var(--acc); min-width: 80px; }
+    #replay .rp-count { color: var(--mut); font-variant-numeric: tabular-nums; min-width: 78px; text-align: right; }
+    #replay .rp-log {
+      color: var(--ink2); font-variant-numeric: tabular-nums; flex: 2;
+      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -140,11 +166,13 @@
       <span class="sub" id="status">NQ · loading…</span>
       <span class="spacer"></span>
       <div id="tf-bar"></div>
+      <button id="replayBtn">replay</button>
     </header>
     <div id="chart-wrap">
       <div id="chart"></div>
       <div id="panel"></div>
     </div>
+    <div id="replay"></div>
   </div>
 
   <script src="./static/vendor/lightweight-charts.standalone.production.js"></script>
@@ -152,6 +180,7 @@
   <script src="./static/js/indicators/sessions.js"></script>
   <script src="./static/js/indicators/volume_profile.js"></script>
   <script src="./static/js/session_detail.js"></script>
+  <script src="./static/js/replay.js"></script>
   <script src="./static/js/chart.js"></script>
 </body>
 </html>

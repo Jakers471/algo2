@@ -130,7 +130,7 @@ def api_sessions():
     if len(parsed) == 2:
         return parsed
     symbol, tf, limit = parsed
-    result = compute_sessions(_load_df(symbol, tf, limit))
+    result = compute_sessions(_asof_slice(_load_df(symbol, tf, limit)))
     return jsonify(symbol=symbol, tf=tf, **result)
 
 
@@ -145,6 +145,19 @@ def _opt_float(name):
         return None
 
 
+def _asof_slice(df):
+    """For replay: if an `asof` (Unix seconds) param is present, keep only bars
+    up to and including it — the same indicator math on a growing slice."""
+    raw = request.args.get("asof")
+    if raw is None:
+        return df
+    try:
+        asof = int(raw)
+    except ValueError:
+        return df
+    return df.loc[df.index <= pd.Timestamp(asof, unit="s", tz="UTC")]
+
+
 @app.route("/api/indicators/volume_profile")
 def api_volume_profile():
     parsed = _request_params()
@@ -155,7 +168,7 @@ def api_volume_profile():
     row_size = _opt_float("row_size")
     va = _opt_float("value_area_pct")
     result = compute_volume_profile(
-        _load_df(symbol, tf, limit), row_size=row_size, value_area_pct=va
+        _asof_slice(_load_df(symbol, tf, limit)), row_size=row_size, value_area_pct=va
     )
     return jsonify(symbol=symbol, tf=tf, **result)
 

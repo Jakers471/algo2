@@ -119,12 +119,13 @@
       ctx.candleSeries.attachPrimitive(prim);
       let reqId = 0;
 
-      async function update(data, tf) {
+      async function update(data, tf, opts) {
         const id = ++reqId;
         if (tf === '1d') { prim.setData([], []); return; }
+        const asof = opts && opts.asof ? `&asof=${opts.asof}` : '';
         try {
           const res = await fetch(
-            `/api/indicators/sessions?symbol=${symbol}&tf=${tf}&limit=10000`,
+            `/api/indicators/sessions?symbol=${symbol}&tf=${tf}&limit=10000${asof}`,
             { cache: 'no-store' }
           );
           const payload = res.ok ? await res.json() : null;

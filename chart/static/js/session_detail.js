@@ -122,13 +122,14 @@
     let profiles = [];
     let reqId = 0;
 
-    async function update(tf) {
+    async function update(tf, opts) {
       const id = ++reqId;
       prim.setSelected(null); // data changed -> drop any selection
       if (tf === '1d') { profiles = []; return; }
+      const asof = opts && opts.asof ? `&asof=${opts.asof}` : '';
       try {
         const res = await fetch(
-          `/api/indicators/volume_profile?symbol=${symbol}&tf=${tf}&limit=10000`,
+          `/api/indicators/volume_profile?symbol=${symbol}&tf=${tf}&limit=10000${asof}`,
           { cache: 'no-store' }
         );
         const payload = res.ok ? await res.json() : null;

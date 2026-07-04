@@ -199,6 +199,7 @@ function createIndicatorManager(chart, candleSeries, symbol, config, opts) {
   const onChange = (opts && opts.onChange) || (() => {});
   let lastData = null;
   let lastTf = null;
+  let lastOpts = null;
 
   // `items` may be a static array or a function of config (so swatch colors /
   // sub-toggles come from algo_config.yaml).
@@ -218,7 +219,7 @@ function createIndicatorManager(chart, candleSeries, symbol, config, opts) {
   function enable(def) {
     const inst = def.create({ chart, candleSeries, symbol, config });
     active.set(def.id, inst);
-    if (lastData) inst.update(lastData, lastTf);
+    if (lastData) inst.update(lastData, lastTf, lastOpts);
     // Apply any remembered per-item visibility.
     const state = itemsFor(def);
     if (inst.setItemVisible) {
@@ -233,11 +234,14 @@ function createIndicatorManager(chart, candleSeries, symbol, config, opts) {
     active.delete(def.id);
   }
 
-  // Re-run every enabled indicator against new data (e.g. timeframe switch).
-  function onData(data, tf) {
+  // Re-run every enabled indicator against new data (e.g. timeframe switch or a
+  // replay frame). `opts` may carry { asof } so indicators recompute on the
+  // revealed slice.
+  function onData(data, tf, opts) {
     lastData = data;
     lastTf = tf;
-    for (const inst of active.values()) inst.update(data, tf);
+    lastOpts = opts || null;
+    for (const inst of active.values()) inst.update(data, tf, opts);
   }
 
   function makeRow(cls, checked, labelHTML, onToggle) {
@@ -364,13 +368,16 @@ async function main() {
     : null;
 
   let firstLoad = true;
+  let fullData = { candles: [], volumes: [] };
   async function select(tf) {
+    if (replay && replay.isActive()) replay.stop(); // leave replay on tf switch
     current = tf;
     for (const [k, b] of Object.entries(buttons)) b.classList.toggle('active', k === tf);
     setStatus(`${SYMBOL} · ${tf} · loading…`);
 
     const prevRange = chart.timeScale().getVisibleRange();
     const data = await loadData(tf);
+    fullData = data;
     render(chart, candleSeries, volumeSeries, data);
     indicators.onData(data, tf);
     if (sessionDetail) sessionDetail.update(tf);
@@ -391,6 +398,86 @@ async function main() {
     const n = (data.candles || []).length;
     setStatus(hasBackend ? `${SYMBOL} · ${tf} · ${n.toLocaleString()} bars` : 'sample data (no backend)');
     saveViewState();
+  }
+
+  // ---- Replay ---------------------------------------------------------------
+  // Reveal bars forward from a start point while indicators recompute as-of each
+  // bar (backend computes on bars <= asof — same math as live). A log line shows
+  // the current forming session's values.
+  const fmtLevel = (p) => String(Math.round(p * 4) / 4);
+  const shortVol = (v) => (v >= 1e6 ? (v / 1e6).toFixed(2) + 'm' : v >= 1e3 ? Math.round(v / 1e3) + 'k' : String(Math.round(v)));
+
+  async function replayLog(asof) {
+    try {
+      const res = await fetch(
+        `/api/indicators/volume_profile?symbol=${SYMBOL}&tf=${current}&limit=10000&asof=${asof}`,
+        { cache: 'no-store' }
+      );
+      if (!res.ok) return `${fmtDate(asof)} ${fmt12h(asof)}`;
+      const d = await res.json();
+      const profs = d.profiles || [];
+      const cur = profs.find((p) => asof >= p.start && asof <= p.end) || profs[profs.length - 1];
+      const when = `${fmtDate(asof)} ${fmt12h(asof)}`;
+      if (!cur) return when;
+      return `${when} · ${cur.session} · POC ${fmtLevel(cur.poc)} · VAH ${fmtLevel(cur.vah)} · VAL ${fmtLevel(cur.val)} · vol ${shortVol(cur.total_volume)}`;
+    } catch (_) { return ''; }
+  }
+
+  let replayWindow = 120;
+  async function replayFrame(i) {
+    const candles = fullData.candles || [];
+    if (!candles.length) return '';
+    const slice = {
+      candles: candles.slice(0, i + 1),
+      volumes: (fullData.volumes || []).slice(0, i + 1),
+    };
+    render(chart, candleSeries, volumeSeries, slice);
+    const asof = candles[i].time;
+    indicators.onData(slice, current, { asof });
+    if (sessionDetail) sessionDetail.update(current, { asof });
+    try {
+      chart.timeScale().setVisibleLogicalRange({
+        from: i - replayWindow,
+        to: i + Math.round(replayWindow * 0.08),
+      });
+    } catch (_) { /* ignore */ }
+    return replayLog(asof);
+  }
+
+  const replay = window.Replay
+    ? window.Replay.create({
+        mount: document.getElementById('replay'),
+        onFrame: replayFrame,
+        onExit: () => {
+          // Restore the full, live view.
+          render(chart, candleSeries, volumeSeries, fullData);
+          indicators.onData(fullData, current);
+          if (sessionDetail) sessionDetail.update(current);
+          try { chart.timeScale().fitContent(); } catch (_) { /* ignore */ }
+          const rb = document.getElementById('replayBtn');
+          if (rb) rb.classList.remove('active');
+        },
+      })
+    : null;
+
+  function enterReplay() {
+    if (!replay || !hasBackend) return;
+    const n = (fullData.candles || []).length;
+    if (!n) return;
+    const range = chart.timeScale().getVisibleLogicalRange();
+    replayWindow = range ? Math.max(40, Math.min(Math.round(range.to - range.from), 400)) : 120;
+    const startIdx = range ? Math.max(0, Math.min(Math.floor(range.from), n - 1)) : 0;
+    const rb = document.getElementById('replayBtn');
+    if (rb) rb.classList.add('active');
+    replay.start(startIdx, n);
+  }
+
+  const replayBtn = document.getElementById('replayBtn');
+  if (replayBtn) {
+    replayBtn.addEventListener('click', () => {
+      if (replay && replay.isActive()) replay.stop();
+      else enterReplay();
+    });
   }
 
   buttons = buildTimeframeBar(timeframes, current, select);
