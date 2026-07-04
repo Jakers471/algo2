@@ -5,6 +5,32 @@ dated + timed and terse (≤50 lines). Split into `notes/` when this gets large.
 
 ---
 
+## 2026-07-03 20:32 CDT — Perf: rays → canvas primitive; new palette
+
+**Jake compared to a reference chart** (…/algo/algoproj/simplicity, port 8765) —
+liked its colors + felt it was snappier/smoother, including the indicator modal.
+Read its files directly: it draws overlays as SVG (addLineSeries count = 1).
+
+**Root cause found:** our sessions H/L drew **~120 individual LWC line series**
+(60 sessions × high+low). LWC re-projects every series each frame → laggy
+pan/zoom; and each panel toggle **tore down + rebuilt** all series → laggy modal.
+
+**Fix:** rewrote `sessions.js` so rays + verticals are ONE canvas primitive
+(same technique as the vertical lines / volume profile). Verified headlessly:
+**0 addLineSeries calls** (was ~120), 240 canvas strokes, toggling = pure
+repaint (no series churn), 1d clears, destroy detaches.
+
+**Palette:** adopted the reference theme — bg #0d0d0d/#1a1a19, text #c3c2b7,
+up #199e70, down #e66767, accent #3987e5, borders rgba(255,255,255,.10). Grid
+already off.
+
+**Still TODO / noticed:** reference also draws the volume profile as an SVG
+overlay and has a richer sidebar (backtest run panel, per-session stat modules,
+chat log). Ours' VP is already a single primitive (fine). Their sidebar hints at
+the backtest UI we'll build next.
+
+---
+
 ## 2026-07-03 20:24 CDT — algo_config.yaml (all knobs) + uniform bins fix
 
 **`algo_config.yaml`** is now the single source of truth for every knob (session

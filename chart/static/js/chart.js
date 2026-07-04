@@ -28,14 +28,15 @@ function fmtDate(unixSec) {
 }
 
 const COLORS = {
-  background: '#0e1117',
-  text: '#d1d4dc',
-  grid: '#1c2230',
-  border: '#2a3140',
-  up: '#26a69a',
-  down: '#ef5350',
-  volUp: 'rgba(38, 166, 154, 0.5)',
-  volDown: 'rgba(239, 83, 80, 0.5)',
+  background: '#1a1a19',
+  text: '#c3c2b7',
+  grid: '#1a1a19',
+  border: 'rgba(255, 255, 255, 0.10)',
+  crosshair: '#898781',
+  up: '#199e70',
+  down: '#e66767',
+  volUp: 'rgba(25, 158, 112, 0.5)',
+  volDown: 'rgba(230, 103, 103, 0.5)',
 };
 
 function createChart() {
@@ -56,8 +57,8 @@ function createChart() {
     },
     crosshair: {
       mode: LightweightCharts.CrosshairMode.Normal,
-      vertLine: { color: COLORS.border, labelBackgroundColor: '#2a3140' },
-      horzLine: { color: COLORS.border, labelBackgroundColor: '#2a3140' },
+      vertLine: { color: COLORS.crosshair, labelBackgroundColor: '#2a2a28' },
+      horzLine: { color: COLORS.crosshair, labelBackgroundColor: '#2a2a28' },
     },
     rightPriceScale: {
       borderColor: COLORS.border,

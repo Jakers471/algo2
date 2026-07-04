@@ -50,6 +50,12 @@ All notable changes to this project. Format loosely follows
 - `.gitignore` excluding the large parquet data files.
 
 ### Changed
+- **Performance:** session H/L rays now render as a single canvas primitive
+  instead of ~120 individual Lightweight-Charts line series. Pan/zoom and panel
+  toggles are dramatically smoother (toggling is now a repaint, not a
+  teardown/rebuild of many series).
+- **Chart palette** refreshed to a darker/warmer theme (background `#0d0d0d`/
+  `#1a1a19`, text `#c3c2b7`, up `#199e70`, down `#e66767`, accent `#3987e5`).
 - **Volume profile now uses a fixed `row_size`** (price per row) on an absolute
   price grid instead of a fixed bin count — so every row is the same height and
   rows line up across sessions (fixes uneven-looking bins). `row_size` is a

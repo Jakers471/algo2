@@ -5,13 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>volume_profile_algo — chart</title>
   <style>
-    :root { color-scheme: dark; }
+    :root {
+      color-scheme: dark;
+      --pg: #0d0d0d;                    /* page background */
+      --s: #1a1a19;                     /* surface (buttons, chart, panel) */
+      --ink: #fff;                      /* primary text */
+      --ink2: #c3c2b7;                  /* secondary text (warm) */
+      --mut: #898781;                   /* muted */
+      --ring: rgba(255, 255, 255, 0.10);/* borders */
+      --acc: #3987e5;                   /* accent */
+      --up: #199e70;
+    }
     html, body {
       margin: 0;
       height: 100%;
-      background: #0e1117;
-      color: #d1d4dc;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--pg);
+      color: var(--ink2);
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
       overflow: hidden;
     }
     #app {
@@ -25,23 +35,23 @@
       align-items: center;
       gap: 10px;
       padding: 10px 16px;
-      border-bottom: 1px solid #1c2230;
-      background: #0b0e14;
+      border-bottom: 1px solid var(--ring);
+      background: var(--pg);
     }
     header .dot {
       width: 8px; height: 8px; border-radius: 50%;
-      background: #26a69a;
+      background: var(--up);
     }
     header h1 {
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 650;
       letter-spacing: 0.02em;
       margin: 0;
-      color: #d1d4dc;
+      color: var(--ink);
     }
     header .sub {
       font-size: 12px;
-      color: #6b7280;
+      color: var(--mut);
     }
     header .spacer { flex: 1 1 auto; }
     #tf-bar {
@@ -50,20 +60,20 @@
     }
     #tf-bar button {
       font: inherit;
-      font-size: 12px;
-      color: #9aa4b2;
-      background: #10141d;
-      border: 1px solid #1c2230;
-      border-radius: 5px;
-      padding: 4px 10px;
+      font-size: 12.5px;
+      color: var(--ink2);
+      background: var(--s);
+      border: 1px solid var(--ring);
+      border-radius: 7px;
+      padding: 5px 11px;
       cursor: pointer;
       transition: color .12s, background .12s, border-color .12s;
     }
-    #tf-bar button:hover { color: #d1d4dc; border-color: #2a3140; }
+    #tf-bar button:hover { color: var(--ink); border-color: rgba(255,255,255,0.2); }
     #tf-bar button.active {
-      color: #0e1117;
-      background: #26a69a;
-      border-color: #26a69a;
+      color: #fff;
+      background: var(--acc);
+      border-color: var(--acc);
       font-weight: 600;
     }
     #chart-wrap {
@@ -78,16 +88,16 @@
     /* Floating control panel, upper-left over the chart. */
     #panel {
       position: absolute;
-      top: 10px;
-      left: 10px;
+      top: 8px;
+      left: 8px;
       z-index: 5;
-      min-width: 132px;
-      padding: 8px;
-      background: rgba(11, 14, 20, 0.88);
-      border: 1px solid #1c2230;
+      min-width: 150px;
+      padding: 8px 9px;
+      background: rgba(26, 26, 25, 0.94);
+      border: 1px solid var(--ring);
       border-radius: 8px;
-      backdrop-filter: blur(4px);
-      font-size: 12px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+      font-size: 11.5px;
       user-select: none;
     }
     #panel .panel-group + .panel-group { margin-top: 8px; }
@@ -96,26 +106,26 @@
       align-items: center;
       gap: 7px;
       cursor: pointer;
-      color: #d1d4dc;
+      color: var(--ink2);
     }
     #panel .panel-master { font-weight: 600; }
     #panel .panel-subs {
       margin: 5px 0 0 6px;
       padding-left: 8px;
-      border-left: 1px solid #1c2230;
+      border-left: 1px solid var(--ring);
       display: flex;
       flex-direction: column;
       gap: 4px;
     }
-    #panel .panel-item { color: #9aa4b2; }
+    #panel .panel-item { color: var(--mut); }
     #panel input[type="checkbox"] {
       width: 13px; height: 13px;
       margin: 0;
-      accent-color: #26a69a;
+      accent-color: var(--acc);
       cursor: pointer;
     }
     #panel .swatch {
-      width: 10px; height: 10px;
+      width: 9px; height: 9px;
       border-radius: 2px;
       display: inline-block;
       flex: 0 0 auto;
