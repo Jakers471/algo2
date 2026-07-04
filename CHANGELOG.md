@@ -6,6 +6,22 @@ All notable changes to this project. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Volume** indicator (time-based) — extracted the per-bar volume histogram out
+  of the chart core into a proper pluggable indicator, matching convention #5.
+  Math in `src/indicators/volume.py` (pure: OHLCV in, per-bar `{time, value, up}`
+  out — the single source of truth for chart + backtest), served at
+  `/api/indicators/volume`, rendered by
+  `chart/static/js/indicators/volume.js` as a bottom-band histogram series with a
+  master toggle (on by default); recomputes as-of each replay frame like the
+  other indicators. Bar colors + band `height_pct` are config knobs under
+  `volume` in `algo_config.yaml` (`volume_config()` in `src/config.py`).
+
+### Changed
+- `chart/static/js/chart.js` no longer builds the volume series inline: it hosts
+  candles only and lets the `volume` indicator draw the histogram. `createChart`
+  returns `{chart, candleSeries}`, `render(candleSeries, data)` drops the volume
+  arg, and sample-data mode is candles-only (volume is API-driven now).
+
 - **Replay terminal monitor** — a standalone reader for the replay readout.
   `tools/replay_monitor.py` polls the server and streams the forming session's
   `when · session · POC · VAH · VAL · vol` into a separate terminal, printing

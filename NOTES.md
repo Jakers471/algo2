@@ -5,6 +5,30 @@ dated + timed and terse (≤50 lines). Split into `notes/` when this gets large.
 
 ---
 
+## 2026-07-04 — Volume made a first-class indicator module
+
+**Goal (user):** "do with volume as volume profile is" — the time-based volume
+histogram was hardcoded into `chart.js` (series built in `createChart`, drawn in
+`render`, sliced in replay). Make it modular like every other indicator (conv #5).
+
+**Change:** new two-halves module. Math `src/indicators/volume.py`
+`compute_volume(df)` → `{bars:[{time,value,up}]}` (pure; `up=close>=open` so the
+frontend can tint direction). Endpoint `/api/indicators/volume` (asof-aware, so
+replay recomputes on the revealed slice — parity with the rest). Renderer
+`chart/static/js/indicators/volume.js` adds its own `vol` overlay histogram
+pinned to the bottom band, fetches + colors per bar, master toggle on by default.
+
+**Why config:** volume math has no numeric knobs, but colors + band height are
+tunables → `volume` section in `algo_config.yaml` + `volume_config()`, read by the
+renderer via `/api/config` (colors stay config-driven, mirrors sessions).
+
+**Chart core slimmed:** `createChart()` → `{chart, candleSeries}`;
+`render(candleSeries, data)`; sample-data mode is candles-only (volume is
+API-driven now, so it won't show without a backend — same as the other
+indicators). Verified: endpoint + asof slicing return correct bars; JS syntax OK.
+
+---
+
 ## 2026-07-04 — Replay readout → separate terminal monitor
 
 **Goal (user):** peel the on-chart replay readout into its own terminal script
