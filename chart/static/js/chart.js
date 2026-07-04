@@ -180,7 +180,7 @@ function setStatus(text) {
  * enabled indicators in sync with the current data/tf. Indicators are
  * self-contained modules; this is the only thing that drives them
  * (see indicators/registry.js). */
-function createIndicatorManager(chart, candleSeries) {
+function createIndicatorManager(chart, candleSeries, symbol) {
   const defs = window.IndicatorRegistry ? window.IndicatorRegistry.list() : [];
   const active = new Map();      // id -> instance
   const itemState = new Map();   // id -> { itemId: visible }
@@ -197,7 +197,7 @@ function createIndicatorManager(chart, candleSeries) {
   }
 
   function enable(def) {
-    const inst = def.create({ chart, candleSeries });
+    const inst = def.create({ chart, candleSeries, symbol });
     active.set(def.id, inst);
     if (lastData) inst.update(lastData, lastTf);
     // Apply any remembered per-item visibility.
@@ -283,7 +283,7 @@ async function main() {
   let current = timeframes.includes('5m') ? '5m' : timeframes[0];
   let buttons = {};
 
-  const indicators = createIndicatorManager(chart, candleSeries);
+  const indicators = createIndicatorManager(chart, candleSeries, SYMBOL);
   indicators.buildUI(document.getElementById('panel'));
 
   async function select(tf) {

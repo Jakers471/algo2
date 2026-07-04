@@ -8,7 +8,23 @@ Keep everything modular. Group code by concern into clearly-labeled,
 self-contained folders — each folder owns one thing and holds all files
 related to it.
 
-### 2. Architecture — strategy decoupled from broker
+Top-level layout:
+- **`src/`** — the backend (Python), the "brain": `indicators/` (pure math),
+  `strategy/` (decisions), `brokers/` (abstraction + adapters), `backtest/`.
+- **`chart/`** — the frontend (reusable UI): a thin view that renders whatever
+  the backend computes. `chart/server.py` is the seam (serves the page + API,
+  importing from `src/`).
+- **`data/`** — datasets + pipeline (parquets gitignored).
+
+### 2. Backend/frontend split — one source of truth for math
+
+Anything numeric (indicator values, signals, decisions) lives in **`src/`** and
+is computed **once**. The chart and the backtester both consume the same
+functions so they can't drift. The frontend never reimplements math — it fetches
+computed values from the API and draws them. Presentation (colors, styling,
+show/hide) is the frontend's job; windows/parameters/logic are the backend's.
+
+### 3. Architecture — strategy decoupled from broker
 
 The trading strategy MUST stay independent of broker-specific code. A **broker
 abstraction layer** defines one standard interface (a fixed set of methods) that
@@ -16,18 +32,20 @@ the strategy calls; per-broker **adapters** translate those calls to each
 broker's API. Adding or swapping a broker must never require touching strategy
 logic. Do not let broker-specific details leak into the strategy backend.
 
-### 3. Indicators — pluggable, toggleable chart modules
+### 4. Indicators — two halves: math (backend) + renderer (frontend)
 
-Each indicator (volume profile, etc.) is a **self-contained module** that
-attaches to the chart and can be turned **on/off individually** at runtime.
-- One indicator per module, under the chart layer (e.g.
-  `chart/indicators/<name>`), exposing a standard attach/detach (enable/disable)
-  interface the chart calls.
-- An indicator never depends on another indicator or on strategy internals — it
-  takes data in and draws on the chart. Add an indicator by dropping in a new
-  module, not by editing existing ones.
+Each indicator has two self-contained modules:
+- **Math** in `src/indicators/<name>.py` — pure: OHLCV in, values/levels out. No
+  UI, no I/O, no strategy/broker knowledge. This is the single source of truth
+  (chart + backtest use it). The server exposes it at `/api/indicators/<name>`.
+- **Renderer** in `chart/static/js/indicators/<name>.js` — fetches the computed
+  values and draws them; a pluggable, toggleable chart module (master + optional
+  per-item toggles via the control panel). Never computes the math itself.
 
-### 4. Documentation & records — keep these current
+An indicator never depends on another indicator or on strategy internals. Add
+one by dropping in the two modules, not by editing existing ones.
+
+### 5. Documentation & records — keep these current
 
 Update these whenever you make a change; treat it as part of the task, not an
 afterthought.
@@ -42,6 +60,6 @@ afterthought.
   dependency is added here immediately, with a version floor and a short
   inline comment on what it's for. Remove entries that are no longer used.
 
-### 5. Extending these conventions
+### 6. Extending these conventions
 
 Add new numbered conventions here as the project's needs grow.

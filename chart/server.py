@@ -1,23 +1,24 @@
 """
 chart/server.py — Flask backend that connects the parquet data to the chart UI.
 
-Serves the chart page + static assets and exposes a small JSON API:
+This is the seam between the backend and the chart: it reads the parquets and
+delegates all indicator math to `src/` (single source of truth), then serves the
+results to the frontend. The JS just renders what it gets.
 
-  GET /                              -> chart.html
-  GET /api/timeframes?symbol=NQ      -> {"symbol":"NQ","timeframes":["1m",...]}
-  GET /api/candles?symbol=NQ&tf=5m   -> {"candles":[...], "volumes":[...]}
+  GET /                                    -> chart.html
+  GET /api/timeframes?symbol=NQ            -> {"symbol","timeframes":[...]}
+  GET /api/candles?symbol=NQ&tf=5m         -> {"candles":[...], "volumes":[...]}
+  GET /api/indicators/sessions?symbol=NQ&tf=5m
+        -> {"sessions":[...], "rays":[...], "verticals":[...]}  (from src.indicators)
 
-Candles/volumes are Lightweight-Charts-ready: `time` is a Unix timestamp in
-seconds (UTC). By default the API returns the most recent LIMIT bars per
-timeframe (10,000).
-
-The chart is meant to be reusable, so this stays self-contained: it only reads
-the parquets under <repo>/data/<SYMBOL>/<SYMBOL>_<tf>.parquet.
+All `time` fields are Unix seconds (UTC). The API returns the most recent LIMIT
+bars per timeframe (10,000) by default.
 
 Run:  python chart/server.py   (then open http://127.0.0.1:5000)
 """
 import os
 import re
+import sys
 import functools
 
 import pandas as pd
@@ -26,6 +27,10 @@ from flask import Flask, jsonify, request, send_from_directory
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(HERE)
 DATA_DIR = os.path.join(REPO_ROOT, "data")
+
+# Make the backend (src/) importable — the chart is the frontend, src/ owns math.
+sys.path.insert(0, REPO_ROOT)
+from src.indicators.sessions import compute_sessions  # noqa: E402
 
 # Show this many most-recent bars per timeframe.
 DEFAULT_LIMIT = 10_000
@@ -48,11 +53,16 @@ def available_timeframes(symbol):
 
 
 @functools.lru_cache(maxsize=32)
+def _load_df(symbol, tf, limit):
+    """Last `limit` bars for (symbol, tf) as a DataFrame. Cached: the parquets
+    are static, so we read once per (symbol, tf, limit). Callers must not mutate
+    the returned frame."""
+    return pd.read_parquet(_parquet_path(symbol, tf)).tail(limit)
+
+
 def _load_tail(symbol, tf, limit):
-    """Load the last `limit` bars for (symbol, tf) as LWC-ready dicts. Cached:
-    the parquets are static, so we only pay the read once per (symbol, tf)."""
-    df = pd.read_parquet(_parquet_path(symbol, tf))
-    df = df.tail(limit)
+    """LWC-ready candles/volumes for (symbol, tf)."""
+    df = _load_df(symbol, tf, limit)
 
     # UTC index -> Unix seconds (int) for Lightweight Charts.
     times = (df.index.view("int64") // 1_000_000_000).tolist()
@@ -82,23 +92,39 @@ def api_timeframes():
     return jsonify(symbol=symbol, timeframes=available_timeframes(symbol))
 
 
-@app.route("/api/candles")
-def api_candles():
+def _request_params():
+    """Parse & validate symbol/tf/limit. Returns (symbol, tf, limit) or an
+    (error_response, status) tuple to return directly."""
     symbol = request.args.get("symbol", "NQ")
     tf = request.args.get("tf", "5m")
     if not (_SAFE.match(symbol) and _SAFE.match(tf)):
         return jsonify(error="bad symbol/tf"), 400
     if not os.path.exists(_parquet_path(symbol, tf)):
         return jsonify(error=f"no data for {symbol} {tf}"), 404
-
     try:
         limit = int(request.args.get("limit", DEFAULT_LIMIT))
     except ValueError:
         limit = DEFAULT_LIMIT
-    limit = max(1, min(limit, 200_000))
+    return symbol, tf, max(1, min(limit, 200_000))
 
-    payload = _load_tail(symbol, tf, limit)
-    return jsonify(symbol=symbol, tf=tf, **payload)
+
+@app.route("/api/candles")
+def api_candles():
+    parsed = _request_params()
+    if len(parsed) == 2:  # (response, status)
+        return parsed
+    symbol, tf, limit = parsed
+    return jsonify(symbol=symbol, tf=tf, **_load_tail(symbol, tf, limit))
+
+
+@app.route("/api/indicators/sessions")
+def api_sessions():
+    parsed = _request_params()
+    if len(parsed) == 2:
+        return parsed
+    symbol, tf, limit = parsed
+    result = compute_sessions(_load_df(symbol, tf, limit))
+    return jsonify(symbol=symbol, tf=tf, **result)
 
 
 if __name__ == "__main__":

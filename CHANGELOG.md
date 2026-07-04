@@ -6,6 +6,11 @@ All notable changes to this project. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **`src/` backend** (the "brain"): `indicators/` (pure math), plus `strategy/`,
+  `brokers/` (with a `Broker` interface skeleton), and `backtest/` placeholders.
+- `src/indicators/sessions.py` — session H/L math (OHLCV → rays + verticals),
+  now the single source of truth for the chart *and* future backtests.
+- `/api/indicators/sessions` endpoint serving the computed levels.
 - Indicator framework: pluggable module registry
   (`chart/static/js/indicators/registry.js`) + a floating control panel on the
   chart's upper-left; indicators self-register with an optional master toggle and
@@ -31,6 +36,10 @@ All notable changes to this project. Format loosely follows
 - `.gitignore` excluding the large parquet data files.
 
 ### Changed
+- **Backend/frontend split:** session H/L math moved from JavaScript to
+  `src/indicators/sessions.py`. The JS sessions module is now a thin renderer
+  that fetches computed levels from the API and draws them (colors stay
+  frontend). CLAUDE.md updated with the split + one-source-of-truth conventions.
 - Chart time axis and crosshair now use 12-hour format; removed the chart grid.
 - Moved the chart frontend under `chart/` so the UI stays self-contained and
   reusable across tasks.

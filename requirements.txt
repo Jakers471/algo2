@@ -1,3 +1,5 @@
 flask>=3.0      # backend API + static host
-pandas>=2.0     # data crunching
+pandas>=2.0     # data crunching (parquet I/O, resampling)
+numpy>=1.24     # indicator math (src/indicators)
+pyarrow>=14.0   # parquet engine for pandas
 pywebview>=4.4  # wraps it in a native desktop window

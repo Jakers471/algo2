@@ -5,6 +5,32 @@ dated + timed and terse (≤50 lines). Split into `notes/` when this gets large.
 
 ---
 
+## 2026-07-03 20:03 CDT — Backend/frontend split (src/) 
+
+**Decision (Jake):** indicator *logic* belongs in Python, not JS — the algo will
+backtest + make entry/exit decisions on the same math the chart shows, so it must
+live once. Split the repo into **backend (`src/`)** and **frontend (`chart/`)**.
+
+- **`src/`** = the brain: `indicators/` (pure OHLCV→values math), `strategy/`,
+  `brokers/` (Broker interface skeleton), `backtest/`. Placeholders for the last
+  three; only sessions math is real so far.
+- **`src/indicators/sessions.py`** — ported the session H/L math from JS. Pure,
+  DataFrame in / rays+verticals out. Verified it produces **identical** results
+  to the old JS (48 rays on 2000 5m bars, same prices/times).
+- **`chart/server.py`** = the seam: added `/api/indicators/sessions`, imports
+  `src/`. The JS sessions module is now a **thin renderer** (fetch + draw).
+- **Rule (now in CLAUDE.md):** anything numeric lives in `src/`, computed once;
+  frontend only renders. Colors/styling = frontend; windows/params = backend.
+
+**Verified** full pipeline headlessly: Python compute == JS baseline; API returns
+120 rays at 10k/5m (cap 60 instances); slimmed renderer draws + toggles + skips
+1d + detaches on destroy. Canvas draw still needs a visual eyeball.
+
+**Gotcha:** hit two stale Flask servers bound to :5000 masking the new route —
+kill all python before restarting when testing the server.
+
+---
+
 ## 2026-07-03 19:51 CDT — Sessions control panel + vertical boundaries
 
 - **Floating control panel** (chart upper-left): per-indicator master toggle +
