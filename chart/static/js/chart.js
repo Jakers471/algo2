@@ -10,6 +10,21 @@
 
 const SYMBOL = 'NQ';
 
+/* 12-hour time formatting. Our API sends Unix-second UTC timestamps, so we
+ * format in UTC to stay consistent with the data (sessions get proper tz
+ * handling once the sessions indicator lands). */
+function fmt12h(unixSec) {
+  const d = new Date(unixSec * 1000);
+  let h = d.getUTCHours();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${String(d.getUTCMinutes()).padStart(2, '0')} ${ampm}`;
+}
+function fmtDate(unixSec) {
+  const d = new Date(unixSec * 1000);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
 const COLORS = {
   background: '#0e1117',
   text: '#d1d4dc',
@@ -30,8 +45,12 @@ function createChart() {
       fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     },
     grid: {
-      vertLines: { color: COLORS.grid },
-      horzLines: { color: COLORS.grid },
+      vertLines: { visible: false },
+      horzLines: { visible: false },
+    },
+    localization: {
+      // Crosshair time label: date + 12-hour time.
+      timeFormatter: (t) => `${fmtDate(t)} ${fmt12h(t)}`,
     },
     crosshair: {
       mode: LightweightCharts.CrosshairMode.Normal,
@@ -46,6 +65,9 @@ function createChart() {
       borderColor: COLORS.border,
       timeVisible: true,
       secondsVisible: false,
+      // Axis ticks: 12-hour time for intraday ticks, date for day/month ticks.
+      tickMarkFormatter: (time, tickMarkType) =>
+        tickMarkType >= 3 ? fmt12h(time) : fmtDate(time),
     },
     autoSize: true,
   });
