@@ -22,7 +22,7 @@ sessions:
 # absolute price grid — so every row is the same height and rows line up across
 # sessions. Smaller row_size = finer resolution (and moves the POC).
 volume_profile:
-  row_size: 20.0               # price per row (fixed; uniform, aligned bins)
+  row_size: 5.0               # price per row (fixed; uniform, aligned bins)
   value_area_pct: 0.70        # volume fraction defining the value area (VAL/VAH)
 
 # ---- Chart defaults -------------------------------------------------------

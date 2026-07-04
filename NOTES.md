@@ -5,6 +5,31 @@ dated + timed and terse (≤50 lines). Split into `notes/` when this gets large.
 
 ---
 
+## 2026-07-03 20:49 CDT — Click-a-session levels + REPLAY vision
+
+**Built (Jake's pick — on-chart, no module):** click a session's span →
+`session_detail.js` overlays its H/VAH/POC/VAL/L labeled lines + faint span/VA
+shade. Own canvas primitive, fetches its own volume_profile (works whether or not
+the VP overlay is on). Click again / empty = clear; tf change clears. Verified
+headlessly: hit-test, toggle, draw (5 lines + 5 labels), destroy/unsubscribe.
+
+**Jake's REPLAY vision (next big thing, noted for planning):**
+- A **replay tool**: step bars forward (1x/2x/4x), watching POC/VAH/VAL + volume
+  profile **recompute live** as bars are revealed. Scrub to any point, cut off,
+  play forward.
+- Purpose: Jake builds the strategy by *watching* this; then we wire the strategy,
+  **backtest bar-by-bar on NQ 5m**, then replay again **with trades drawn**
+  (entry/exit/stop, resting positions).
+- Also wants **backend logs / script output** of what's happening during replay.
+- Mental model to build toward: replay = feed the SAME src/ indicator functions a
+  growing slice of bars (df.iloc[:i]) frame by frame; the chart just renders each
+  frame. Same math as live/backtest → nothing diverges. Backtest = replay with a
+  strategy consuming each frame and emitting trades.
+- **Scope now:** just the replay capability (+ maybe a backend log stream). Trades
+  come after the strategy/backtest work.
+
+---
+
 ## 2026-07-03 20:40 CDT — Persist chart view across refresh
 
 **Jake:** refresh reset the chart to default layout; wanted the exact window

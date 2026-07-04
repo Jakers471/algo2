@@ -358,6 +358,11 @@ async function main() {
   });
   indicators.buildUI(document.getElementById('panel'));
 
+  // Click a session's span to overlay its H/VAH/POC/VAL/L levels (no module).
+  const sessionDetail = window.SessionDetail
+    ? window.SessionDetail.create({ chart, candleSeries, symbol: SYMBOL, config: CONFIG })
+    : null;
+
   let firstLoad = true;
   async function select(tf) {
     current = tf;
@@ -368,6 +373,7 @@ async function main() {
     const data = await loadData(tf);
     render(chart, candleSeries, volumeSeries, data);
     indicators.onData(data, tf);
+    if (sessionDetail) sessionDetail.update(tf);
 
     // Restore the saved window on first load; keep the same window across a
     // timeframe switch; otherwise fit everything.
