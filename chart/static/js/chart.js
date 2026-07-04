@@ -8,7 +8,9 @@
  * as a bare file), it falls back to generated sample data so it still renders.
  */
 
-const SYMBOL = 'NQ';
+// Set from /api/config at startup (algo_config.yaml is the source of truth).
+let SYMBOL = 'NQ';
+let CONFIG = {};
 
 /* 12-hour time formatting. Our API sends Unix-second UTC timestamps, so we
  * format in UTC to stay consistent with the data (sessions get proper tz
@@ -90,6 +92,14 @@ function createChart() {
   });
 
   return { chart, candleSeries, volumeSeries };
+}
+
+async function fetchConfig() {
+  try {
+    const res = await fetch('/api/config', { cache: 'no-store' });
+    if (res.ok) return await res.json();
+  } catch (_) { /* no backend */ }
+  return {};
 }
 
 async function fetchTimeframes() {
@@ -180,30 +190,36 @@ function setStatus(text) {
  * enabled indicators in sync with the current data/tf. Indicators are
  * self-contained modules; this is the only thing that drives them
  * (see indicators/registry.js). */
-function createIndicatorManager(chart, candleSeries, symbol) {
+function createIndicatorManager(chart, candleSeries, symbol, config) {
   const defs = window.IndicatorRegistry ? window.IndicatorRegistry.list() : [];
   const active = new Map();      // id -> instance
   const itemState = new Map();   // id -> { itemId: visible }
   let lastData = null;
   let lastTf = null;
 
+  // `items` may be a static array or a function of config (so swatch colors /
+  // sub-toggles come from algo_config.yaml).
+  function resolveItems(def) {
+    return typeof def.items === 'function' ? def.items(config) : (def.items || []);
+  }
+
   function itemsFor(def) {
     if (!itemState.has(def.id)) {
       const s = {};
-      for (const it of def.items || []) s[it.id] = true;
+      for (const it of resolveItems(def)) s[it.id] = true;
       itemState.set(def.id, s);
     }
     return itemState.get(def.id);
   }
 
   function enable(def) {
-    const inst = def.create({ chart, candleSeries, symbol });
+    const inst = def.create({ chart, candleSeries, symbol, config });
     active.set(def.id, inst);
     if (lastData) inst.update(lastData, lastTf);
     // Apply any remembered per-item visibility.
     const state = itemsFor(def);
     if (inst.setItemVisible) {
-      for (const it of def.items || []) {
+      for (const it of resolveItems(def)) {
         if (!state[it.id]) inst.setItemVisible(it.id, false);
       }
     }
@@ -253,7 +269,7 @@ function createIndicatorManager(chart, candleSeries, symbol) {
       group.appendChild(master);
 
       // Per-item sub-rows with color swatches.
-      for (const it of def.items || []) {
+      for (const it of resolveItems(def)) {
         const swatch = `<i class="swatch" style="background:${it.color}"></i>${it.label}`;
         const row = makeRow('panel-item', true, swatch, (on) => {
           itemsFor(def)[it.id] = on;
@@ -276,14 +292,19 @@ function createIndicatorManager(chart, candleSeries, symbol) {
 async function main() {
   const { chart, candleSeries, volumeSeries } = createChart();
 
+  // Load config first — it drives symbol, default timeframe, and indicator knobs.
+  CONFIG = await fetchConfig();
+  if (CONFIG.chart && CONFIG.chart.symbol) SYMBOL = CONFIG.chart.symbol;
+  const defaultTf = (CONFIG.chart && CONFIG.chart.timeframe) || '5m';
+
   let timeframes = await fetchTimeframes();
   const hasBackend = timeframes.length > 0;
   if (!hasBackend) timeframes = ['sample'];
 
-  let current = timeframes.includes('5m') ? '5m' : timeframes[0];
+  let current = timeframes.includes(defaultTf) ? defaultTf : timeframes[0];
   let buttons = {};
 
-  const indicators = createIndicatorManager(chart, candleSeries, SYMBOL);
+  const indicators = createIndicatorManager(chart, candleSeries, SYMBOL, CONFIG);
   indicators.buildUI(document.getElementById('panel'));
 
   async function select(tf) {

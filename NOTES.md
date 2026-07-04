@@ -5,6 +5,34 @@ dated + timed and terse (≤50 lines). Split into `notes/` when this gets large.
 
 ---
 
+## 2026-07-03 20:24 CDT — algo_config.yaml (all knobs) + uniform bins fix
+
+**`algo_config.yaml`** is now the single source of truth for every knob (session
+windows+colors, VP row_size + value_area_pct, chart defaults). `src/config.py`
+reads it **live** per request — verified: edited row_size 5.0→2.5, `/api/config`
+and the computed profile both changed with **no restart**. Backend defaults,
+endpoints, and the frontend all resolve knobs through it; `/api/config` feeds the
+chart (colors, symbol/tf, params). Indicators refactored to read config; session
+windows/tz/cap no longer hardcoded. **This config will also drive the strategy +
+backtester.**
+
+**Fixed "bins look different sizes" (Jake):** each session was dividing its own
+range into a fixed *count* (24), so wide sessions got taller rows. Switched VP to
+a fixed **`row_size`** (price per row) on an **absolute price grid** → every row
+is the same height and rows line up across sessions. Verified: all rows exactly
+row_size tall, edges on grid, volume conserved, VA≥70%.
+
+**Roadmap (Jake set order):** next = **backtesting framework + wiring up the
+strategy** (before more chart features). The config + `src/` split were built to
+sit under that. brokers/ has a Broker interface stub; strategy/ + backtest/ are
+placeholders ready to fill.
+
+**Verified**: /api/config serves knobs; VP uses config row_size (uniform rows);
+query override + live YAML edit both work; renderers pull colors from config
+(swatches match), draw, toggle, detach.
+
+---
+
 ## 2026-07-03 20:13 CDT — Volume Profile indicator + params discussion
 
 **Built per-session Volume Profile** (`src/indicators/volume_profile.py`): for

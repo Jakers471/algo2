@@ -7,9 +7,9 @@ high and low, then:
     later low <= it), otherwise to the last bar;
   - "verticals" mark the session's start and end bar times.
 
-Session windows are anchored to America/Chicago (the data's exchange tz),
-DST-aware. This module is pure: OHLCV DataFrame in, levels out. Colors are a
-frontend concern and deliberately live in the chart renderer, not here.
+Session windows, timezone, and the instance cap all come from algo_config.yaml
+(via src.config) — the single source of truth for knobs. This module is pure:
+OHLCV DataFrame in, levels out. Colors are a frontend concern.
 
 Returned dict (times are Unix seconds, UTC):
   {
@@ -23,32 +23,21 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-TZ = "America/Chicago"
-
-# Session windows as minutes-from-midnight in TZ. A window "wraps" past midnight
-# when end <= start (e.g. Asia 18:00 -> 03:00). Single source of truth.
-SESSIONS = [
-    {"name": "Asia",   "start": 18 * 60, "end": 3 * 60},
-    {"name": "London", "start": 3 * 60,  "end": 8 * 60},
-    {"name": "NY",     "start": 8 * 60,  "end": 17 * 60},
-]
-
-# Cap how many recent session instances we return, to bound output on
-# timeframes that span many days.
-MAX_SESSIONS = 60
+from ..config import sessions_config
 
 
 def session_names() -> list[str]:
-    return [s["name"] for s in SESSIONS]
+    return [w["name"] for w in sessions_config()["windows"]]
 
 
 def _empty() -> dict:
     return {"sessions": session_names(), "rays": [], "verticals": []}
 
 
-def session_instances(df: pd.DataFrame, max_sessions: int = MAX_SESSIONS) -> list[dict]:
+def session_instances(df: pd.DataFrame, max_sessions: int | None = None) -> list[dict]:
     """Group bars into session instances (one per session per day). Shared by the
     sessions H/L and volume-profile indicators so they use the SAME grouping.
+    Session windows / timezone / cap come from config (algo_config.yaml).
 
     Returns the most-recent `max_sessions` instances (by start), each:
       {
@@ -63,7 +52,12 @@ def session_instances(df: pd.DataFrame, max_sessions: int = MAX_SESSIONS) -> lis
     if df is None or df.empty:
         return []
 
-    local = df.index.tz_convert(TZ)
+    scfg = sessions_config()
+    SESSIONS = scfg["windows"]
+    if max_sessions is None:
+        max_sessions = scfg["max_sessions"]
+
+    local = df.index.tz_convert(scfg["timezone"])
     minute = local.hour.values * 60 + local.minute.values
     highs = df["high"].to_numpy()
     lows = df["low"].to_numpy()
@@ -119,7 +113,7 @@ def session_instances(df: pd.DataFrame, max_sessions: int = MAX_SESSIONS) -> lis
     return insts[-max_sessions:]
 
 
-def compute_sessions(df: pd.DataFrame, max_sessions: int = MAX_SESSIONS) -> dict:
+def compute_sessions(df: pd.DataFrame, max_sessions: int | None = None) -> dict:
     """OHLCV DataFrame (tz-aware UTC index) -> session H/L rays + verticals."""
     insts = session_instances(df, max_sessions)
     if not insts:

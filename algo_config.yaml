@@ -1,0 +1,32 @@
+# algo_config.yaml — single source of truth for every tunable knob.
+#
+# The backend reads this LIVE (edit it and refresh the chart to see changes — no
+# server restart needed). The chart, the indicators, and — once wired up — the
+# strategy and backtester all read their parameters from here, so what you see on
+# the chart is exactly what the backtest/strategy run on.
+
+# ---- Sessions -------------------------------------------------------------
+# Window times are LOCAL clock times in `timezone` (DST-aware). A window may wrap
+# past midnight (e.g. Asia 18:00 -> 03:00). Used by the Sessions H/L and Volume
+# Profile indicators. `color` is the chart color for that session.
+sessions:
+  timezone: America/Chicago
+  max_sessions: 60            # most-recent session instances to compute/draw
+  windows:
+    Asia:   { start: "18:00", end: "03:00", color: "#3f8ae0" }
+    London: { start: "03:00", end: "08:00", color: "#e0a44e" }
+    NY:     { start: "08:00", end: "17:00", color: "#a06ee0" }
+
+# ---- Volume Profile -------------------------------------------------------
+# row_size is a FIXED price height per row (e.g. 5.0 points), anchored to an
+# absolute price grid — so every row is the same height and rows line up across
+# sessions. Smaller row_size = finer resolution (and moves the POC).
+volume_profile:
+  row_size: 5.0               # price per row (fixed; uniform, aligned bins)
+  value_area_pct: 0.70        # volume fraction defining the value area (VAL/VAH)
+
+# ---- Chart defaults -------------------------------------------------------
+chart:
+  symbol: NQ
+  timeframe: 5m
+  limit: 10000                # bars loaded per timeframe

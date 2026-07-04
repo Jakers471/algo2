@@ -6,6 +6,12 @@ All notable changes to this project. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **`algo_config.yaml`** — single source of truth for every tunable knob
+  (session windows + colors, volume-profile `row_size`/`value_area_pct`, chart
+  defaults). `src/config.py` reads it live (edit + refresh, no restart). Backend
+  defaults, endpoints, and the chart all resolve knobs through it; `/api/config`
+  serves it to the frontend, which drives colors/params (even session colors)
+  from it. Will also drive the strategy + backtester.
 - **`src/` backend** (the "brain"): `indicators/` (pure math), plus `strategy/`,
   `brokers/` (with a `Broker` interface skeleton), and `backtest/` placeholders.
 - `src/indicators/sessions.py` — session H/L math (OHLCV → rays + verticals),
@@ -44,6 +50,12 @@ All notable changes to this project. Format loosely follows
 - `.gitignore` excluding the large parquet data files.
 
 ### Changed
+- **Volume profile now uses a fixed `row_size`** (price per row) on an absolute
+  price grid instead of a fixed bin count — so every row is the same height and
+  rows line up across sessions (fixes uneven-looking bins). `row_size` is a
+  config knob.
+- Indicators + server default their parameters from `algo_config.yaml` rather
+  than hardcoded values; session windows/tz/cap now come from config too.
 - **Backend/frontend split:** session H/L math moved from JavaScript to
   `src/indicators/sessions.py`. The JS sessions module is now a thin renderer
   that fetches computed levels from the API and draws them (colors stay

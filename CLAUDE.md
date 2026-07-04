@@ -21,10 +21,20 @@ Top-level layout:
 Anything numeric (indicator values, signals, decisions) lives in **`src/`** and
 is computed **once**. The chart and the backtester both consume the same
 functions so they can't drift. The frontend never reimplements math — it fetches
-computed values from the API and draws them. Presentation (colors, styling,
-show/hide) is the frontend's job; windows/parameters/logic are the backend's.
+computed values from the API and draws them. Presentation (styling, show/hide)
+is the frontend's job; windows/parameters/logic are the backend's.
 
-### 3. Architecture — strategy decoupled from broker
+### 3. Config — every knob in `algo_config.yaml`
+
+Every tunable parameter/knob lives in **`algo_config.yaml`** (session windows +
+colors, volume-profile `row_size`/`value_area_pct`, chart defaults). `src/config.py`
+reads it **live** (per request — edit + refresh, no restart). Backend defaults,
+the chart, and (soon) the strategy + backtester all resolve knobs through it, so
+what you see on the chart is exactly what a backtest/strategy would run on. The
+frontend fetches it from `/api/config`; even colors are config-driven. Add a new
+knob here first, then read it via `src/config.py` — never hardcode a tunable.
+
+### 4. Architecture — strategy decoupled from broker
 
 The trading strategy MUST stay independent of broker-specific code. A **broker
 abstraction layer** defines one standard interface (a fixed set of methods) that
@@ -32,7 +42,7 @@ the strategy calls; per-broker **adapters** translate those calls to each
 broker's API. Adding or swapping a broker must never require touching strategy
 logic. Do not let broker-specific details leak into the strategy backend.
 
-### 4. Indicators — two halves: math (backend) + renderer (frontend)
+### 5. Indicators — two halves: math (backend) + renderer (frontend)
 
 Each indicator has two self-contained modules:
 - **Math** in `src/indicators/<name>.py` — pure: OHLCV in, values/levels out. No
@@ -45,7 +55,7 @@ Each indicator has two self-contained modules:
 An indicator never depends on another indicator or on strategy internals. Add
 one by dropping in the two modules, not by editing existing ones.
 
-### 5. Documentation & records — keep these current
+### 6. Documentation & records — keep these current
 
 Update these whenever you make a change; treat it as part of the task, not an
 afterthought.
@@ -60,6 +70,6 @@ afterthought.
   dependency is added here immediately, with a version floor and a short
   inline comment on what it's for. Remove entries that are no longer used.
 
-### 6. Extending these conventions
+### 7. Extending these conventions
 
 Add new numbered conventions here as the project's needs grow.

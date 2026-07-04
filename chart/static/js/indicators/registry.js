@@ -11,13 +11,18 @@
  *     label:             'Sessions H/L',        // panel label
  *     description:       '...',                 // tooltip (optional)
  *     enabledByDefault:  true,                  // auto-on at load (optional)
- *     items: [ {id,label,color}, ... ],         // optional sub-toggles w/ swatches
- *     create({ chart, candleSeries }) -> {      // called when toggled on
+ *     items: [ {id,label,color}, ... ]          // optional sub-toggles w/ swatches
+ *            | (config) => [ {id,label,color} ], //   ...or a fn of the config
+ *     create({ chart, candleSeries, symbol, config }) -> {  // called when on
  *       update(data, tf),                       // (re)draw from candle data
  *       setItemVisible(itemId, visible),        // optional, if `items` present
  *       destroy(),                              // remove everything it added
  *     }
  *   }
+ *
+ * `config` is algo_config.yaml (fetched from /api/config) — the source of truth
+ * for knobs. Indicators read colors/params from it so editing the YAML changes
+ * the chart.
  */
 (function () {
   const defs = [];

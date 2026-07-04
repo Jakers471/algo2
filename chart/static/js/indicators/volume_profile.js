@@ -9,15 +9,20 @@
  * Colors are a frontend concern and live here (mirrors sessions.js).
  */
 (function () {
-  const SESSION_META = [
-    { id: 'Asia',   color: '#3f8ae0' },
-    { id: 'London', color: '#e0a44e' },
-    { id: 'NY',     color: '#a06ee0' },
-  ];
-  const COLOR = Object.fromEntries(SESSION_META.map((s) => [s.id, s.color]));
+  // Fallback colors if config is unavailable; config.sessions.windows wins.
+  const FALLBACK = { Asia: '#3f8ae0', London: '#e0a44e', NY: '#a06ee0' };
+
+  function sessionList(config) {
+    const wins = config && config.sessions && config.sessions.windows;
+    if (wins) {
+      return Object.keys(wins).map((id) => ({ id, color: wins[id].color || FALLBACK[id] || '#888888' }));
+    }
+    return Object.keys(FALLBACK).map((id) => ({ id, color: FALLBACK[id] }));
+  }
 
   const MAX_WIDTH_PX = 140;   // widest a profile (its POC row) can extend
-  const BINS = 24;            // resolution requested from the backend
+  // row_size (resolution) is NOT sent from here — the backend reads it from
+  // algo_config.yaml, so editing the config recomputes the profile.
 
   function hexToRgb(hex) {
     const h = hex.replace('#', '');
@@ -42,7 +47,7 @@
           if (x0 === null) continue;
           const sessW = xEnd === null ? MAX_WIDTH_PX : Math.max(xEnd - x0, 8);
           const maxW = Math.min(sessW * 0.95, MAX_WIDTH_PX);
-          const rgb = hexToRgb(COLOR[prof.session] || '#888888');
+          const rgb = hexToRgb((this._src._color && this._src._color[prof.session]) || '#888888');
           const maxVol = prof.max_bin_volume || 1;
 
           for (const r of prof.rows) {
@@ -79,9 +84,10 @@
     renderer() { return this._renderer; }
   }
   class ProfilePrimitive {
-    constructor() {
+    constructor(color, visible) {
       this._profiles = [];
-      this._visible = { Asia: true, London: true, NY: true };
+      this._color = color;       // { session: hex } from config
+      this._visible = visible;   // { session: bool }
       this._chart = null;
       this._series = null;
       this._requestUpdate = null;
@@ -102,11 +108,14 @@
     label: 'Volume Profile',
     description: 'Per-session volume profile (histogram, POC, value area)',
     enabledByDefault: false,
-    items: SESSION_META.map((s) => ({ id: s.id, label: s.id, color: s.color })),
+    items: (config) => sessionList(config).map((s) => ({ id: s.id, label: s.id, color: s.color })),
 
     create(ctx) {
       const symbol = ctx.symbol || 'NQ';
-      const prim = new ProfilePrimitive();
+      const list = sessionList(ctx.config);
+      const color = Object.fromEntries(list.map((s) => [s.id, s.color]));
+      const visible = Object.fromEntries(list.map((s) => [s.id, true]));
+      const prim = new ProfilePrimitive(color, visible);
       ctx.candleSeries.attachPrimitive(prim);
       let reqId = 0;
 
@@ -115,7 +124,7 @@
         if (tf === '1d') { prim.setProfiles([]); return; }
         try {
           const res = await fetch(
-            `/api/indicators/volume_profile?symbol=${symbol}&tf=${tf}&limit=10000&bins=${BINS}`,
+            `/api/indicators/volume_profile?symbol=${symbol}&tf=${tf}&limit=10000`,
             { cache: 'no-store' }
           );
           const payload = res.ok ? await res.json() : null;

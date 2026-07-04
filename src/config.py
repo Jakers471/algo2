@@ -1,0 +1,67 @@
+"""src.config — loader for algo_config.yaml, the single source of truth for
+every tunable knob (sessions, volume profile, chart defaults).
+
+Read LIVE on each call (the file is tiny) so editing the YAML is reflected on the
+next request — no restart. Everything numeric/parametric across the project
+(indicators now; strategy + backtester later) resolves its knobs through here so
+the chart and the backtests can't disagree.
+"""
+from __future__ import annotations
+
+import os
+
+import yaml
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CONFIG_PATH = os.path.join(REPO_ROOT, "algo_config.yaml")
+
+
+def load() -> dict:
+    """Parse algo_config.yaml fresh (so edits take effect without a restart)."""
+    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def _hhmm_to_min(value) -> int:
+    """'18:00' -> 1080 (minutes from midnight)."""
+    h, m = str(value).split(":")
+    return int(h) * 60 + int(m)
+
+
+def sessions_config() -> dict:
+    """Resolved session config: windows as minutes-from-midnight + color.
+
+    Returns {"timezone", "max_sessions", "windows": [{name,start,end,color}, ...]}
+    preserving the order the windows appear in the YAML.
+    """
+    cfg = load().get("sessions", {})
+    windows = []
+    for name, w in (cfg.get("windows") or {}).items():
+        windows.append({
+            "name": name,
+            "start": _hhmm_to_min(w["start"]),
+            "end": _hhmm_to_min(w["end"]),
+            "color": w.get("color", "#888888"),
+        })
+    return {
+        "timezone": cfg.get("timezone", "America/Chicago"),
+        "max_sessions": int(cfg.get("max_sessions", 60)),
+        "windows": windows,
+    }
+
+
+def volume_profile_config() -> dict:
+    cfg = load().get("volume_profile", {})
+    return {
+        "row_size": float(cfg.get("row_size", 5.0)),
+        "value_area_pct": float(cfg.get("value_area_pct", 0.70)),
+    }
+
+
+def chart_config() -> dict:
+    cfg = load().get("chart", {})
+    return {
+        "symbol": cfg.get("symbol", "NQ"),
+        "timeframe": cfg.get("timeframe", "5m"),
+        "limit": int(cfg.get("limit", 10000)),
+    }

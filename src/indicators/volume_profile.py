@@ -3,7 +3,9 @@
 For each session instance (Asia / London / NY per day), build a volume profile
 over that session's high->low range:
 
-  1. Slice [low, high] into `bins` equal price rows.
+  1. Slice price into equal rows of fixed height `row_size`, anchored to an
+     ABSOLUTE price grid (row edges at multiples of row_size). Because the grid
+     is shared, every row is the same height and rows line up across sessions.
   2. For each bar in the session, distribute its volume across the rows its
      high->low spans, weighted by overlap (the "faithful" method — a bar that
      covers three rows contributes to all three, proportionally). A zero-range
@@ -15,18 +17,18 @@ over that session's high->low range:
          `value_area_pct` (default 70%) of the session's volume; the block's
          edges are VAL (low) and VAH (high).
 
-Design note: `bins` and `value_area_pct` are PARAMETERS OF THE COMPUTATION, not
-display filters. POC and the value area genuinely change with `bins`; VAL/VAH
-also change with `value_area_pct` (POC and the histogram do not). The chart and
-the strategy call this with the same params so they agree on the numbers.
+Design note: `row_size` and `value_area_pct` are PARAMETERS OF THE COMPUTATION
+(from algo_config.yaml), not display filters. POC and the value area genuinely
+change with `row_size`; VAL/VAH also change with `value_area_pct` (POC and the
+histogram do not). The chart and the strategy call this with the same params.
 
-This module is pure: OHLCV DataFrame in, levels out. It reuses
-`sessions.session_instances` so both indicators share one session grouping.
+Pure: OHLCV DataFrame in, levels out. Reuses `sessions.session_instances` so both
+indicators share one session grouping.
 
 Returned dict (prices are floats; times are Unix seconds, UTC):
   {
     "sessions": ["Asia","London","NY"],
-    "bins": <int>, "value_area_pct": <float>,
+    "row_size": <float>, "value_area_pct": <float>,
     "profiles": [{
        "session", "start", "end", "high", "low",
        "poc", "val", "vah", "total_volume", "max_bin_volume",
@@ -36,13 +38,13 @@ Returned dict (prices are floats; times are Unix seconds, UTC):
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pandas as pd
 
-from .sessions import MAX_SESSIONS, session_names, session_instances
-
-DEFAULT_BINS = 24
-DEFAULT_VALUE_AREA_PCT = 0.70
+from ..config import volume_profile_config
+from .sessions import session_names, session_instances
 
 
 def _value_area(vol: np.ndarray, poc_idx: int, pct: float) -> tuple[int, int]:
@@ -64,23 +66,22 @@ def _value_area(vol: np.ndarray, poc_idx: int, pct: float) -> tuple[int, int]:
     return lo, hi
 
 
-def _profile_for(highs, lows, vols, positions, low, high, bins):
-    """Overlap-weighted volume-per-row for one session -> np.ndarray[bins]."""
-    rng = high - low
-    row = rng / bins
-    binvol = np.zeros(bins)
+def _profile_for(highs, lows, vols, positions, base, row_size, n_rows):
+    """Overlap-weighted volume-per-row for one session, on a grid whose row i
+    spans [base + i*row_size, base + (i+1)*row_size). -> np.ndarray[n_rows]."""
+    binvol = np.zeros(n_rows)
     for p in positions:
         bl, bh, v = lows[p], highs[p], vols[p]
         if bh <= bl:  # zero-range bar: dump into the row containing its price
-            idx = min(max(int((bl - low) / row), 0), bins - 1)
+            idx = min(max(int((bl - base) / row_size), 0), n_rows - 1)
             binvol[idx] += v
             continue
-        lo_i = min(max(int((bl - low) / row), 0), bins - 1)
-        hi_i = min(max(int((bh - low) / row), 0), bins - 1)
+        lo_i = min(max(int((bl - base) / row_size), 0), n_rows - 1)
+        hi_i = min(max(int((bh - base) / row_size), 0), n_rows - 1)
         span = bh - bl
         for bi in range(lo_i, hi_i + 1):
-            b_bot = low + bi * row
-            b_top = b_bot + row
+            b_bot = base + bi * row_size
+            b_top = b_bot + row_size
             overlap = min(bh, b_top) - max(bl, b_bot)
             if overlap > 0:
                 binvol[bi] += v * (overlap / span)
@@ -89,16 +90,23 @@ def _profile_for(highs, lows, vols, positions, low, high, bins):
 
 def compute_volume_profile(
     df: pd.DataFrame,
-    bins: int = DEFAULT_BINS,
-    value_area_pct: float = DEFAULT_VALUE_AREA_PCT,
-    max_sessions: int = MAX_SESSIONS,
+    row_size: float | None = None,
+    value_area_pct: float | None = None,
+    max_sessions: int | None = None,
 ) -> dict:
     """OHLCV DataFrame (tz-aware UTC index) -> per-session volume profiles."""
-    base = {"sessions": session_names(), "bins": bins,
-            "value_area_pct": value_area_pct, "profiles": []}
+    vpcfg = volume_profile_config()
+    if row_size is None:
+        row_size = vpcfg["row_size"]
+    if value_area_pct is None:
+        value_area_pct = vpcfg["value_area_pct"]
+    row_size = float(row_size)
+
+    base_out = {"sessions": session_names(), "row_size": row_size,
+                "value_area_pct": value_area_pct, "profiles": []}
     insts = session_instances(df, max_sessions)
-    if not insts:
-        return base
+    if not insts or row_size <= 0:
+        return base_out
 
     highs = df["high"].to_numpy()
     lows = df["low"].to_numpy()
@@ -111,36 +119,41 @@ def compute_volume_profile(
         if high <= low:  # degenerate (single-bar / flat session)
             continue
 
-        binvol = _profile_for(highs, lows, vols, it["positions"], low, high, bins)
+        # Absolute grid: snap the low down / high up to row_size multiples so
+        # rows are shared across sessions.
+        base = math.floor(low / row_size) * row_size
+        top = math.ceil(high / row_size) * row_size
+        n_rows = max(1, int(round((top - base) / row_size)))
+
+        binvol = _profile_for(highs, lows, vols, it["positions"], base, row_size, n_rows)
         total = float(binvol.sum())
         if total <= 0:
             continue
 
-        row = (high - low) / bins
         poc_idx = int(binvol.argmax())
         val_idx, vah_idx = _value_area(binvol, poc_idx, value_area_pct)
 
         rows = [{
-            "low": low + i * row,
-            "high": low + (i + 1) * row,
-            "mid": low + (i + 0.5) * row,
+            "low": base + i * row_size,
+            "high": base + (i + 1) * row_size,
+            "mid": base + (i + 0.5) * row_size,
             "volume": float(binvol[i]),
             "poc": i == poc_idx,
             "in_va": val_idx <= i <= vah_idx,
-        } for i in range(bins)]
+        } for i in range(n_rows)]
 
         profiles.append({
             "session": it["session"],
             "start": int(times[it["start_pos"]]),
             "end": int(times[it["end_pos"]]),
             "high": high, "low": low,
-            "poc": low + (poc_idx + 0.5) * row,
-            "val": low + val_idx * row,
-            "vah": low + (vah_idx + 1) * row,
+            "poc": base + (poc_idx + 0.5) * row_size,
+            "val": base + val_idx * row_size,
+            "vah": base + (vah_idx + 1) * row_size,
             "total_volume": total,
             "max_bin_volume": float(binvol.max()),
             "rows": rows,
         })
 
-    base["profiles"] = profiles
-    return base
+    base_out["profiles"] = profiles
+    return base_out

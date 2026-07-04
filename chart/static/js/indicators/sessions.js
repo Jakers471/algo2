@@ -11,12 +11,18 @@
  * windows/math are the backend's job.
  */
 (function () {
-  const SESSION_META = [
-    { id: 'Asia',   color: '#3f8ae0' },
-    { id: 'London', color: '#e0a44e' },
-    { id: 'NY',     color: '#a06ee0' },
-  ];
-  const COLOR = Object.fromEntries(SESSION_META.map((s) => [s.id, s.color]));
+  // Fallback colors if config is unavailable; config.sessions.windows wins.
+  const FALLBACK = { Asia: '#3f8ae0', London: '#e0a44e', NY: '#a06ee0' };
+
+  // Session list [{id,color}] from config (algo_config.yaml) — drives the panel
+  // swatches and the drawing colors. Falls back if the backend is absent.
+  function sessionList(config) {
+    const wins = config && config.sessions && config.sessions.windows;
+    if (wins) {
+      return Object.keys(wins).map((id) => ({ id, color: wins[id].color || FALLBACK[id] || '#888888' }));
+    }
+    return Object.keys(FALLBACK).map((id) => ({ id, color: FALLBACK[id] }));
+  }
 
   // ---- Vertical-line canvas primitive --------------------------------------
   // Lightweight Charts has no native vertical line, so we draw them with a
@@ -74,13 +80,15 @@
     label: 'Sessions H/L',
     description: 'Asia / London / NY session highs & lows with session boundaries',
     enabledByDefault: true,
-    items: SESSION_META.map((s) => ({ id: s.id, label: s.id, color: s.color })),
+    items: (config) => sessionList(config).map((s) => ({ id: s.id, label: s.id, color: s.color })),
 
     create(ctx) {
       const chart = ctx.chart;
       const symbol = ctx.symbol || 'NQ';
       const series = [];
-      const visible = { Asia: true, London: true, NY: true };
+      const list = sessionList(ctx.config);
+      const COLOR = Object.fromEntries(list.map((s) => [s.id, s.color]));
+      const visible = Object.fromEntries(list.map((s) => [s.id, true]));
       let result = null;   // last payload from the API
       let reqId = 0;       // guards against out-of-order async responses
 
