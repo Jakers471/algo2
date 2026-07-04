@@ -1,0 +1,9 @@
+# Large data files (regenerable via data/build_data.py)
+data/**/*.parquet
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
