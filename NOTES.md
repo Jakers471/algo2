@@ -5,6 +5,58 @@ dated + timed and terse (≤50 lines). Split into `notes/` when this gets large.
 
 ---
 
+## 2026-07-04 — Replay readout → separate terminal monitor
+
+**Goal (user):** peel the on-chart replay readout into its own terminal script
+that runs alongside — knows when replay starts, then streams the readings — as the
+seed of the strategy/backtest consumer. Hard constraint: **replay must stay
+snappy** — the monitor must never slow it.
+
+**Design (chart drives, terminal reads, nothing blocks):** the chart
+fire-and-forgets its cursor via `navigator.sendBeacon` (never awaited → zero added
+latency) to `POST /api/replay/state` (in-memory `{active,symbol,tf,asof}`). The
+monitor `tools/replay_monitor.py` polls `GET /api/replay/state` ~10Hz; the server
+computes the readout lazily on that poll via `compute_volume_profile` (single
+source of truth), cached per-`asof`. So all compute is off the browser loop, on
+the monitor's poll. Beacons on enter (`active:true`), each frame (`asof`), exit
+(`active:false`) → monitor prints `replay initialised` / line per bar / `ended`.
+
+**Verified** end-to-end via Flask test client: POST→GET returns the live NY
+readout (POC/VAH/VAL/vol), exit clears asof, monitor formats the line. stdout
+forced to UTF-8 for the `·`/`──` glyphs on Windows. **Format is v1 — tidy next.**
+
+**Note:** poll (not push) to the terminal means fast playback samples frames
+(prints latest asof per poll), not every bar — fine for a live readout; raise
+`--hz` or revisit if a complete per-bar log is needed for the backtest.
+
+---
+
+## 2026-07-04 — Moving Averages indicator (SMA/EMA, 20 / 50 / 200)
+
+**Added the MA indicator** as a clean two-halves module, following the sessions/
+volume-profile pattern so nothing drifts. Math: `src/indicators/moving_average.py`
+— per-line `type` sma (rolling mean) or ema (`ewm` span=period, adjust=False) on a
+config-selectable `source` (close/open/high/low/hl2/hlc3/ohlc4); one line per
+config entry; first `period-1` bars omitted. Config: new `moving_averages` block
+in `algo_config.yaml` (`source` + `lines: [{type,period,color}]`) read via
+`config.moving_averages_config()`. Server: `/api/indicators/moving_average`
+(honors the same `asof` slice → recomputes per replay frame). Renderer:
+`moving_average.js` — one LWC line series per line keyed by `type+period` (so
+SMA20/EMA20 never collide), colors from config, per-line toggle via
+`applyOptions({visible})`; on by default.
+
+**"MAs don't look right" — chased it down:** proved the math is exact (code MA20
+== plain mean of last 20 closes to machine precision; data clean: 1.36M rows,
+sorted, unique, no NaN, steady 5m spacing). So the numbers are right — the look
+was SMA lag on 5m (MA200 ≈ 16h behind). Added EMA to hug price; **user tried both
+and prefers SMA**, so defaults are back to `type: sma` (EMA stays a config flip
+away per line). Verified endpoint + math after the switch.
+
+**Note:** reverted `main` back to `f9249f7` earlier this session; the session-
+character/regime + ML work is parked on branch `character-regime-ml`.
+
+---
+
 ## 2026-07-03 21:01 CDT — Replay v1 (the loop that becomes the backtest)
 
 **Built minimal replay.** Backend: added `asof` param to the sessions +

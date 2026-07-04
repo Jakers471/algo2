@@ -6,6 +6,26 @@ All notable changes to this project. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Replay terminal monitor** — a standalone reader for the replay readout.
+  `tools/replay_monitor.py` polls the server and streams the forming session's
+  `when · session · POC · VAH · VAL · vol` into a separate terminal, printing
+  `replay initialised` / `replay ended` on the transitions. The chart
+  fire-and-forgets its replay cursor to a new in-memory endpoint
+  (`POST/GET /api/replay/state`) via `navigator.sendBeacon` — never awaited, so
+  it adds zero latency to the replay loop; the server computes the readout lazily
+  on poll (reusing `compute_volume_profile`, cached per-`asof`), off the browser.
+- **Dev server no-cache**: `chart/server.py` now sends `Cache-Control: no-store`
+  on every response so a plain browser refresh always loads the latest
+  chart/JS/CSS/config (no hard-refresh needed).
+- **Moving Averages** indicator — `src/indicators/moving_average.py`: SMA or EMA
+  (per-line `type`) of a configurable price `source` (close by default), one line
+  per `period` (20 / 50 / 200, SMA by default). Pure math (single source of truth
+  for chart + backtest), served at `/api/indicators/moving_average`, and rendered
+  as Lightweight-Charts line series
+  (`chart/static/js/indicators/moving_average.js`) with per-line toggles.
+  Type/periods/colors/source are config knobs under `moving_averages` in
+  `algo_config.yaml`; recomputes as-of each replay frame.
+
 - **`algo_config.yaml`** — single source of truth for every tunable knob
   (session windows + colors, volume-profile `row_size`/`value_area_pct`, chart
   defaults). `src/config.py` reads it live (edit + refresh, no restart). Backend

@@ -58,6 +58,41 @@ def volume_profile_config() -> dict:
     }
 
 
+def volume_config() -> dict:
+    """Resolved volume (time-based histogram) config: bar colors + band height.
+
+    Colors are a frontend concern (the math has no knobs); they live here so the
+    chart's volume colors are config-driven like everything else.
+    """
+    cfg = load().get("volume", {})
+    return {
+        "up_color": cfg.get("up_color", "rgba(25, 158, 112, 0.5)"),
+        "down_color": cfg.get("down_color", "rgba(230, 103, 103, 0.5)"),
+        "height_pct": float(cfg.get("height_pct", 0.20)),
+    }
+
+
+def moving_averages_config() -> dict:
+    """Resolved moving-average config: the price source + the ordered lines.
+
+    Returns {"source", "lines": [{"period": int, "color": str}, ...]} preserving
+    the order the lines appear in the YAML.
+    """
+    cfg = load().get("moving_averages", {})
+    lines = []
+    for ln in (cfg.get("lines") or []):
+        kind = str(ln.get("type", "sma")).lower()
+        lines.append({
+            "type": kind if kind in ("sma", "ema") else "sma",
+            "period": int(ln["period"]),
+            "color": ln.get("color", "#888888"),
+        })
+    return {
+        "source": str(cfg.get("source", "close")),
+        "lines": lines,
+    }
+
+
 def chart_config() -> dict:
     cfg = load().get("chart", {})
     return {

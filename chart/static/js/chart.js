@@ -1,6 +1,7 @@
 /* volume_profile_algo — chart bootstrap
  * TradingView Lightweight Charts v4, dark theme.
- * Candlesticks + volume histogram (overlaid on a scaled bottom band).
+ * Candlesticks only here; volume and everything else are pluggable indicator
+ * modules (see indicators/) — the chart just hosts them.
  *
  * Data: served by chart/server.py from the NQ parquets — the API returns the
  * last ~10k bars for the selected timeframe. A timeframe bar in the header
@@ -35,8 +36,6 @@ const COLORS = {
   crosshair: '#898781',
   up: '#199e70',
   down: '#e66767',
-  volUp: 'rgba(25, 158, 112, 0.5)',
-  volDown: 'rgba(230, 103, 103, 0.5)',
 };
 
 function createChart() {
@@ -83,16 +82,7 @@ function createChart() {
     wickDownColor: COLORS.down,
   });
 
-  const volumeSeries = chart.addHistogramSeries({
-    priceFormat: { type: 'volume' },
-    priceScaleId: 'vol',
-  });
-  // Pin volume to the bottom ~20% of the pane.
-  chart.priceScale('vol').applyOptions({
-    scaleMargins: { top: 0.8, bottom: 0 },
-  });
-
-  return { chart, candleSeries, volumeSeries };
+  return { chart, candleSeries };
 }
 
 async function fetchConfig() {
@@ -127,10 +117,10 @@ async function loadData(tf) {
   return generateSampleData(400);
 }
 
-/* Random-walk OHLCV so the chart looks alive before real data is wired in. */
+/* Random-walk OHLC so the chart looks alive before real data is wired in.
+ * (Volume is an API-driven indicator now, so sample mode shows candles only.) */
 function generateSampleData(bars) {
   const candles = [];
-  const volumes = [];
   let price = 100;
   // Start `bars` days ago, one candle per day.
   const startMs = Date.now() - bars * 86400 * 1000;
@@ -142,26 +132,13 @@ function generateSampleData(bars) {
     const high = Math.max(open, close) + Math.random() * 1.5;
     const low = Math.min(open, close) - Math.random() * 1.5;
     candles.push({ time, open, high, low, close });
-    volumes.push({
-      time,
-      value: Math.round(500 + Math.random() * 2000),
-      color: close >= open ? COLORS.volUp : COLORS.volDown,
-    });
     price = close;
   }
-  return { candles, volumes };
+  return { candles };
 }
 
-function render(chart, candleSeries, volumeSeries, data) {
+function render(candleSeries, data) {
   candleSeries.setData(data.candles);
-
-  // Tint each volume bar by its candle's direction.
-  const volumes = (data.volumes || []).map((v, i) => {
-    if (v.color) return v;
-    const c = data.candles[i];
-    return { ...v, color: c && c.close >= c.open ? COLORS.volUp : COLORS.volDown };
-  });
-  volumeSeries.setData(volumes);
   // Note: no fitContent() here — the caller decides the visible range so we can
   // restore the saved view (see select() / persisted view state).
 }
@@ -184,6 +161,23 @@ function buildTimeframeBar(timeframes, active, onSelect) {
 function setStatus(text) {
   const el = document.getElementById('status');
   if (el) el.textContent = text;
+}
+
+/* Fire-and-forget: report the replay cursor to the backend so a separate
+ * terminal monitor (tools/replay_monitor.py) can read it. NEVER awaited — this
+ * must add zero latency to the replay loop. */
+function reportReplay(state) {
+  try {
+    const body = JSON.stringify(state);
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/api/replay/state', new Blob([body], { type: 'application/json' }));
+    } else {
+      fetch('/api/replay/state', {
+        method: 'POST', body, keepalive: true,
+        headers: { 'Content-Type': 'application/json' },
+      }).catch(() => {});
+    }
+  } catch (_) { /* telemetry must never break replay */ }
 }
 
 /* Indicator manager — reads the global registry, renders a floating control
@@ -324,7 +318,7 @@ function loadViewState() {
 }
 
 async function main() {
-  const { chart, candleSeries, volumeSeries } = createChart();
+  const { chart, candleSeries } = createChart();
 
   // Load config first — it drives symbol, default timeframe, and indicator knobs.
   CONFIG = await fetchConfig();
@@ -368,7 +362,7 @@ async function main() {
     : null;
 
   let firstLoad = true;
-  let fullData = { candles: [], volumes: [] };
+  let fullData = { candles: [] };
   async function select(tf) {
     if (replay && replay.isActive()) replay.stop(); // leave replay on tf switch
     current = tf;
@@ -378,7 +372,7 @@ async function main() {
     const prevRange = chart.timeScale().getVisibleRange();
     const data = await loadData(tf);
     fullData = data;
-    render(chart, candleSeries, volumeSeries, data);
+    render(candleSeries, data);
     indicators.onData(data, tf);
     if (sessionDetail) sessionDetail.update(tf);
 
@@ -427,12 +421,10 @@ async function main() {
   async function replayFrame(i) {
     const candles = fullData.candles || [];
     if (!candles.length) return '';
-    const slice = {
-      candles: candles.slice(0, i + 1),
-      volumes: (fullData.volumes || []).slice(0, i + 1),
-    };
-    render(chart, candleSeries, volumeSeries, slice);
+    const slice = { candles: candles.slice(0, i + 1) };
+    render(candleSeries, slice);
     const asof = candles[i].time;
+    reportReplay({ active: true, symbol: SYMBOL, tf: current, asof });
     indicators.onData(slice, current, { asof });
     if (sessionDetail) sessionDetail.update(current, { asof });
     try {
@@ -449,8 +441,9 @@ async function main() {
         mount: document.getElementById('replay'),
         onFrame: replayFrame,
         onExit: () => {
+          reportReplay({ active: false });
           // Restore the full, live view.
-          render(chart, candleSeries, volumeSeries, fullData);
+          render(candleSeries, fullData);
           indicators.onData(fullData, current);
           if (sessionDetail) sessionDetail.update(current);
           try { chart.timeScale().fitContent(); } catch (_) { /* ignore */ }
@@ -469,6 +462,7 @@ async function main() {
     const startIdx = range ? Math.max(0, Math.min(Math.floor(range.from), n - 1)) : 0;
     const rb = document.getElementById('replayBtn');
     if (rb) rb.classList.add('active');
+    reportReplay({ active: true, symbol: SYMBOL, tf: current, asof: null });
     replay.start(startIdx, n);
   }
 

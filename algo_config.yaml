@@ -23,7 +23,29 @@ sessions:
 # sessions. Smaller row_size = finer resolution (and moves the POC).
 volume_profile:
   row_size: 5.0               # price per row (fixed; uniform, aligned bins)
-  value_area_pct: 0.40        # volume fraction defining the value area (VAL/VAH)
+  value_area_pct: 0.50        # volume fraction defining the value area (VAL/VAH)
+
+# ---- Volume (time-based) --------------------------------------------------
+# The plain volume histogram: one bar of traded volume under each candle, tinted
+# by direction. Colors are presentation (frontend reads them from here); height
+# is the fraction of the pane the volume band occupies, pinned to the bottom.
+volume:
+  up_color: "rgba(25, 158, 112, 0.5)"    # bar color when close >= open
+  down_color: "rgba(230, 103, 103, 0.5)" # bar color when close < open
+  height_pct: 0.20                        # bottom fraction of the pane it fills
+
+# ---- Moving Averages ------------------------------------------------------
+# Each line entry draws one moving average: `type` is sma (simple) or ema
+# (exponential — weights recent bars more, hugs price closer); `period` is the
+# lookback in bars; `color` its chart color. Add/remove lines freely. `source`
+# is the price field averaged: close/open/high/low/hl2/hlc3/ohlc4.
+moving_averages:
+  source: close
+  lines:
+    - { type: sma, period: 20,  color: "#4fc3f7" }   # light blue  — fast
+    - { type: sma, period: 50,  color: "#ffb74d" }   # orange      — medium
+    - { type: sma, period: 100, color: "#f06292" }   # rose        — slower
+    - { type: sma, period: 200, color: "#ba68c8" }   # purple      — slow
 
 # ---- Chart defaults -------------------------------------------------------
 chart:

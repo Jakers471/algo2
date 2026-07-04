@@ -33,6 +33,8 @@ sys.path.insert(0, REPO_ROOT)
 from src import config as algo_config  # noqa: E402
 from src.indicators.sessions import compute_sessions  # noqa: E402
 from src.indicators.volume_profile import compute_volume_profile  # noqa: E402
+from src.indicators.volume import compute_volume  # noqa: E402
+from src.indicators.moving_average import compute_moving_averages  # noqa: E402
 
 # Order timeframes coarse-to-fine for display; only those with a parquet show up.
 TF_ORDER = ["1m", "5m", "15m", "60m", "1d"]
@@ -41,6 +43,26 @@ TF_ORDER = ["1m", "5m", "15m", "60m", "1d"]
 _SAFE = re.compile(r"^[A-Za-z0-9]+$")
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
+# Dev server: never let the browser cache anything, so a plain refresh (F5)
+# always pulls the latest chart.html / JS / CSS — no hard-refresh needed.
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+
+
+@app.after_request
+def _no_cache(resp):
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
+
+
+# ---- Replay state (chart -> terminal monitor) -----------------------------
+# The chart's replay loop fire-and-forgets its cursor here; a standalone terminal
+# monitor (tools/replay_monitor.py) polls it. In-memory + tiny so the browser
+# push is near-free and never slows replay. The readout is computed lazily on the
+# monitor's poll (off the browser loop) and cached per-asof.
+_replay = {"active": False, "symbol": None, "tf": None, "asof": None}
+_readout_cache = {}  # {(symbol, tf, asof): readout-or-None} — holds only latest
 
 
 def _parquet_path(symbol, tf):
@@ -171,6 +193,76 @@ def api_volume_profile():
         _asof_slice(_load_df(symbol, tf, limit)), row_size=row_size, value_area_pct=va
     )
     return jsonify(symbol=symbol, tf=tf, **result)
+
+
+@app.route("/api/indicators/volume")
+def api_volume():
+    parsed = _request_params()
+    if len(parsed) == 2:
+        return parsed
+    symbol, tf, limit = parsed
+    result = compute_volume(_asof_slice(_load_df(symbol, tf, limit)))
+    return jsonify(symbol=symbol, tf=tf, **result)
+
+
+@app.route("/api/indicators/moving_average")
+def api_moving_average():
+    parsed = _request_params()
+    if len(parsed) == 2:
+        return parsed
+    symbol, tf, limit = parsed
+    result = compute_moving_averages(_asof_slice(_load_df(symbol, tf, limit)))
+    return jsonify(symbol=symbol, tf=tf, **result)
+
+
+def _replay_readout():
+    """Forming-session readout for the stored replay `asof`, via
+    compute_volume_profile (single source of truth). Cached per-asof so repeated
+    polls are free; runs on the monitor's poll, off the browser's replay loop."""
+    st = _replay
+    if not (st["active"] and st["asof"] and st["symbol"] and st["tf"]):
+        return None
+    if not (_SAFE.match(str(st["symbol"])) and _SAFE.match(str(st["tf"]))):
+        return None
+    key = (st["symbol"], st["tf"], st["asof"])
+    if key in _readout_cache:
+        return _readout_cache[key]
+    readout = None
+    try:
+        df = _load_df(st["symbol"], st["tf"], algo_config.chart_config()["limit"])
+        df = df.loc[df.index <= pd.Timestamp(st["asof"], unit="s", tz="UTC")]
+        profs = compute_volume_profile(df).get("profiles", [])
+        cur = next((p for p in profs if p["start"] <= st["asof"] <= p["end"]), None)
+        if cur is None and profs:
+            cur = profs[-1]
+        if cur:
+            readout = {"session": cur["session"], "poc": cur["poc"],
+                       "vah": cur["vah"], "val": cur["val"], "vol": cur["total_volume"]}
+    except Exception:
+        readout = None
+    _readout_cache.clear()  # keep only the latest asof
+    _readout_cache[key] = readout
+    return readout
+
+
+@app.route("/api/replay/state", methods=["GET", "POST"])
+def api_replay_state():
+    """POST: the chart pushes its replay cursor {active, symbol, tf, asof}.
+    GET: the terminal monitor polls current state + the computed readout."""
+    if request.method == "POST":
+        data = request.get_json(force=True, silent=True) or {}
+        _replay["active"] = bool(data.get("active", False))
+        for k in ("symbol", "tf", "asof"):
+            if k in data:
+                _replay[k] = data[k]
+        if not _replay["active"]:
+            _replay["asof"] = None  # drop stale position on exit
+        return ("", 204)
+    resp = {k: _replay[k] for k in ("active", "symbol", "tf", "asof")}
+    readout = _replay_readout()
+    if readout:
+        resp.update(readout)
+    return jsonify(resp)
 
 
 if __name__ == "__main__":
