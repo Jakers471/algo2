@@ -5,6 +5,25 @@ dated + timed and terse (≤50 lines). Split into `notes/` when this gets large.
 
 ---
 
+## 2026-07-03 19:51 CDT — Sessions control panel + vertical boundaries
+
+- **Floating control panel** (chart upper-left): per-indicator master toggle +
+  per-item sub-toggles with color swatches. Framework generalized: indicators can
+  declare `items` and expose `setItemVisible(id, on)`; `create` now receives
+  `{ chart, candleSeries }`. Replaces the old header toggle bar.
+- **Sessions H/L**: each session (Asia/London/NY) toggles independently; added
+  **dashed vertical lines at session start/end**, same color as the session.
+- **Vertical lines** use a Lightweight Charts **series primitive** (no native
+  vertical line exists) — one canvas pass draws all boundaries via
+  `timeToCoordinate` + `useMediaCoordinateSpace`. Verified the API exists in the
+  vendored v4.2 build before relying on it.
+- **Verified** headlessly on real 5m NQ data: all-on = 48 rays / 48 verticals;
+  toggling Asia off drops both to 32; re-enable restores; 1d clears; destroy
+  detaches the primitive. (Canvas rendering itself not machine-checkable — needs
+  a visual eyeball.)
+
+---
+
 ## 2026-07-03 19:43 CDT — Indicator framework + Sessions H/L
 
 **Built the indicator system** (first of the pluggable chart modules):

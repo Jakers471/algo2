@@ -8,11 +8,13 @@
  * An indicator definition:
  *   {
  *     id:                'sessions',            // unique
- *     label:             'Sessions H/L',        // button text
- *     description:       '...',                 // button tooltip (optional)
+ *     label:             'Sessions H/L',        // panel label
+ *     description:       '...',                 // tooltip (optional)
  *     enabledByDefault:  true,                  // auto-on at load (optional)
- *     create(chart) -> {                        // called when toggled on
+ *     items: [ {id,label,color}, ... ],         // optional sub-toggles w/ swatches
+ *     create({ chart, candleSeries }) -> {      // called when toggled on
  *       update(data, tf),                       // (re)draw from candle data
+ *       setItemVisible(itemId, visible),        // optional, if `items` present
  *       destroy(),                              // remove everything it added
  *     }
  *   }

@@ -175,31 +175,43 @@ function setStatus(text) {
   if (el) el.textContent = text;
 }
 
-/* Indicator manager — reads the global registry, renders a toggle button per
- * indicator, and keeps enabled indicators in sync with the current data/tf.
- * Indicators are self-contained modules; this is the only thing that drives
- * them (see indicators/registry.js). */
-function createIndicatorManager(chart) {
+/* Indicator manager — reads the global registry, renders a floating control
+ * panel (master toggle + per-item toggles with color swatches), and keeps
+ * enabled indicators in sync with the current data/tf. Indicators are
+ * self-contained modules; this is the only thing that drives them
+ * (see indicators/registry.js). */
+function createIndicatorManager(chart, candleSeries) {
   const defs = window.IndicatorRegistry ? window.IndicatorRegistry.list() : [];
-  const active = new Map(); // id -> instance
+  const active = new Map();      // id -> instance
+  const itemState = new Map();   // id -> { itemId: visible }
   let lastData = null;
   let lastTf = null;
 
-  function enable(def, btn) {
-    const inst = def.create(chart);
-    active.set(def.id, inst);
-    if (btn) btn.classList.add('active');
-    if (lastData) inst.update(lastData, lastTf);
+  function itemsFor(def) {
+    if (!itemState.has(def.id)) {
+      const s = {};
+      for (const it of def.items || []) s[it.id] = true;
+      itemState.set(def.id, s);
+    }
+    return itemState.get(def.id);
   }
 
-  function disable(def, btn) {
+  function enable(def) {
+    const inst = def.create({ chart, candleSeries });
+    active.set(def.id, inst);
+    if (lastData) inst.update(lastData, lastTf);
+    // Apply any remembered per-item visibility.
+    const state = itemsFor(def);
+    if (inst.setItemVisible) {
+      for (const it of def.items || []) {
+        if (!state[it.id]) inst.setItemVisible(it.id, false);
+      }
+    }
+  }
+
+  function disable(def) {
     active.get(def.id).destroy();
     active.delete(def.id);
-    if (btn) btn.classList.remove('active');
-  }
-
-  function toggle(def, btn) {
-    active.has(def.id) ? disable(def, btn) : enable(def, btn);
   }
 
   // Re-run every enabled indicator against new data (e.g. timeframe switch).
@@ -209,16 +221,52 @@ function createIndicatorManager(chart) {
     for (const inst of active.values()) inst.update(data, tf);
   }
 
+  function makeRow(cls, checked, labelHTML, onToggle) {
+    const row = document.createElement('label');
+    row.className = cls;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = checked;
+    cb.addEventListener('change', () => onToggle(cb.checked));
+    const span = document.createElement('span');
+    span.innerHTML = labelHTML;
+    row.append(cb, span);
+    return row;
+  }
+
   function buildUI(container) {
     if (!container) return;
     container.innerHTML = '';
     for (const def of defs) {
-      const b = document.createElement('button');
-      b.textContent = def.label;
-      if (def.description) b.title = def.description;
-      b.addEventListener('click', () => toggle(def, b));
-      container.appendChild(b);
-      if (def.enabledByDefault) enable(def, b);
+      const group = document.createElement('div');
+      group.className = 'panel-group';
+
+      const subs = document.createElement('div');
+      subs.className = 'panel-subs';
+
+      // Master row.
+      const master = makeRow('panel-master', !!def.enabledByDefault, def.label, (on) => {
+        on ? enable(def) : disable(def);
+        subs.style.display = on ? '' : 'none';
+      });
+      if (def.description) master.title = def.description;
+      group.appendChild(master);
+
+      // Per-item sub-rows with color swatches.
+      for (const it of def.items || []) {
+        const swatch = `<i class="swatch" style="background:${it.color}"></i>${it.label}`;
+        const row = makeRow('panel-item', true, swatch, (on) => {
+          itemsFor(def)[it.id] = on;
+          const inst = active.get(def.id);
+          if (inst && inst.setItemVisible) inst.setItemVisible(it.id, on);
+        });
+        subs.appendChild(row);
+      }
+      group.appendChild(subs);
+      subs.style.display = def.enabledByDefault ? '' : 'none';
+
+      container.appendChild(group);
+      if (def.enabledByDefault) enable(def);
     }
   }
 
@@ -235,8 +283,8 @@ async function main() {
   let current = timeframes.includes('5m') ? '5m' : timeframes[0];
   let buttons = {};
 
-  const indicators = createIndicatorManager(chart);
-  indicators.buildUI(document.getElementById('ind-bar'));
+  const indicators = createIndicatorManager(chart, candleSeries);
+  indicators.buildUI(document.getElementById('panel'));
 
   async function select(tf) {
     current = tf;
