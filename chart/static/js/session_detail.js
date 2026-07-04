@@ -121,11 +121,17 @@
 
     let profiles = [];
     let reqId = 0;
+    let lastTf = null;
+    let selKey = null; // { session, start } — the selected session's identity
 
     async function update(tf, opts) {
       const id = ++reqId;
-      prim.setSelected(null); // data changed -> drop any selection
-      if (tf === '1d') { profiles = []; return; }
+      // A real dataset change (timeframe switch) drops the selection; a replay
+      // frame (same tf, new asof) keeps it and re-resolves it below.
+      if (tf !== lastTf) { selKey = null; prim.setSelected(null); }
+      lastTf = tf;
+      if (tf === '1d') { profiles = []; selKey = null; prim.setSelected(null); return; }
+
       const asof = opts && opts.asof ? `&asof=${opts.asof}` : '';
       try {
         const res = await fetch(
@@ -138,16 +144,29 @@
       } catch (_) {
         if (id === reqId) profiles = [];
       }
+      if (id !== reqId) return;
+
+      // Re-resolve the selected session against the (possibly as-of) profiles so
+      // its levels update live during replay; hide it if it hasn't formed yet.
+      if (selKey) {
+        const m = profiles.find((p) => p.session === selKey.session && p.start === selKey.start);
+        prim.setSelected(m || null);
+      }
     }
 
     function onClick(param) {
       if (!param || !param.point) { return; }
       const t = chart.timeScale().coordinateToTime(param.point.x);
-      if (t == null) { prim.setSelected(null); return; }
+      if (t == null) { selKey = null; prim.setSelected(null); return; }
       const hit = profiles.find((p) => t >= p.start && t <= p.end);
-      const cur = prim._selected;
-      const sameAsCurrent = hit && cur && cur.session === hit.session && cur.start === hit.start;
-      prim.setSelected(hit && !sameAsCurrent ? hit : null);
+      const same = hit && selKey && selKey.session === hit.session && selKey.start === hit.start;
+      if (hit && !same) {
+        selKey = { session: hit.session, start: hit.start };
+        prim.setSelected(hit);
+      } else {
+        selKey = null;
+        prim.setSelected(null);
+      }
     }
     chart.subscribeClick(onClick);
 

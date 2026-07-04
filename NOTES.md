@@ -24,9 +24,16 @@ df.iloc[:i]; levels = compute_*(frame)`. Backtest = same loop + a strategy readi
 each frame emitting trades; replay-with-trades = draw those on the same frames.
 So the strategy/backtest work slots straight onto this.
 
-**v1 shortcuts to revisit:** per-frame API calls (sessions + vp overlay + vp log)
-— fine on localhost, can share one fetch later; view tracks a fixed window; no
-trade markers yet (come with the strategy).
+**v1 shortcuts to revisit:** per-frame API calls (sessions + vp overlay + vp log
++ session_detail) — several redundant volume_profile fetches per frame; fine on
+localhost, share one fetch later; view tracks a fixed window; no trade markers
+yet (come with the strategy).
+
+**Follow-up (same session):** clicked-session levels now **persist through
+replay** — session_detail keeps the selection by identity ({session,start}) and
+re-resolves it each as-of frame so its POC/VAH/VAL update live; hidden if the
+session hasn't formed yet at the current bar; cleared only on tf change. Verified
+headlessly.
 
 ---
 

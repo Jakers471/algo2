@@ -60,7 +60,9 @@ All notable changes to this project. Format loosely follows
   overlays that session's H / VAH / POC / VAL / L as labeled lines (from the
   config's `row_size`/`value_area_pct`), with a faint span + value-area shade.
   Click again or on empty space to clear. One canvas primitive, no popup, no
-  extra series (`chart/static/js/session_detail.js`).
+  extra series (`chart/static/js/session_detail.js`). The selection **persists
+  through replay** — the levels stay drawn and update live as-of each bar
+  (cleared only on a timeframe change).
 - **View state persists across refresh:** the chart saves the timeframe, the
   visible time range (zoom + position), and indicator toggles (per-session too)
   to `localStorage` and restores them on load, instead of resetting to
