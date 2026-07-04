@@ -5,6 +5,24 @@ dated + timed and terse (≤50 lines). Split into `notes/` when this gets large.
 
 ---
 
+## 2026-07-03 20:40 CDT — Persist chart view across refresh
+
+**Jake:** refresh reset the chart to default layout; wanted the exact window
+(same zoom + position) + selections restored on reload.
+
+**Done (frontend only):** save `{symbol, tf, visible range, indicator states}` to
+`localStorage` (`vpa.viewstate.v1`) on pan/zoom (debounced) + on any toggle, and
+restore on load. Removed `fitContent()` from render — `select()` now restores the
+saved window on first load, keeps the current window across a timeframe switch,
+and only fits when there's nothing saved. Guarded by symbol (won't restore a
+different instrument's view). Uses LWC `getVisibleRange`/`setVisibleRange`/
+`subscribeVisibleTimeRangeChange` (confirmed in the v4.2 bundle).
+
+**Verified:** indicator state roundtrip (toggle → getState → rebuild from it) is
+an exact match; page/assets serve. Range restore relies on the LWC APIs above.
+
+---
+
 ## 2026-07-03 20:32 CDT — Perf: rays → canvas primitive; new palette
 
 **Jake compared to a reference chart** (…/algo/algoproj/simplicity, port 8765) —

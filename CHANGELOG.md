@@ -49,6 +49,12 @@ All notable changes to this project. Format loosely follows
 - `data/` pipeline (`build_data.py`) and clean NQ/ES parquets (gitignored).
 - `.gitignore` excluding the large parquet data files.
 
+### Added
+- **View state persists across refresh:** the chart saves the timeframe, the
+  visible time range (zoom + position), and indicator toggles (per-session too)
+  to `localStorage` and restores them on load, instead of resetting to
+  `fitContent`. Timeframe switches now also keep the same time window.
+
 ### Changed
 - **Performance:** session H/L rays now render as a single canvas primitive
   instead of ~120 individual Lightweight-Charts line series. Pan/zoom and panel

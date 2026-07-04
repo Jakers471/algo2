@@ -162,8 +162,8 @@ function render(chart, candleSeries, volumeSeries, data) {
     return { ...v, color: c && c.close >= c.open ? COLORS.volUp : COLORS.volDown };
   });
   volumeSeries.setData(volumes);
-
-  chart.timeScale().fitContent();
+  // Note: no fitContent() here — the caller decides the visible range so we can
+  // restore the saved view (see select() / persisted view state).
 }
 
 function buildTimeframeBar(timeframes, active, onSelect) {
@@ -191,10 +191,12 @@ function setStatus(text) {
  * enabled indicators in sync with the current data/tf. Indicators are
  * self-contained modules; this is the only thing that drives them
  * (see indicators/registry.js). */
-function createIndicatorManager(chart, candleSeries, symbol, config) {
+function createIndicatorManager(chart, candleSeries, symbol, config, opts) {
   const defs = window.IndicatorRegistry ? window.IndicatorRegistry.list() : [];
   const active = new Map();      // id -> instance
   const itemState = new Map();   // id -> { itemId: visible }
+  const initialState = (opts && opts.initialState) || {};
+  const onChange = (opts && opts.onChange) || (() => {});
   let lastData = null;
   let lastTf = null;
 
@@ -255,6 +257,15 @@ function createIndicatorManager(chart, candleSeries, symbol, config) {
     if (!container) return;
     container.innerHTML = '';
     for (const def of defs) {
+      const saved = initialState[def.id];
+      const on = saved ? !!saved.on : !!def.enabledByDefault;
+
+      // Seed per-item visibility from saved state (defaults to all-on).
+      const state = itemsFor(def);
+      if (saved && saved.items) {
+        for (const k in saved.items) if (k in state) state[k] = !!saved.items[k];
+      }
+
       const group = document.createElement('div');
       group.className = 'panel-group';
 
@@ -262,9 +273,10 @@ function createIndicatorManager(chart, candleSeries, symbol, config) {
       subs.className = 'panel-subs';
 
       // Master row.
-      const master = makeRow('panel-master', !!def.enabledByDefault, def.label, (on) => {
-        on ? enable(def) : disable(def);
-        subs.style.display = on ? '' : 'none';
+      const master = makeRow('panel-master', on, def.label, (checked) => {
+        checked ? enable(def) : disable(def);
+        subs.style.display = checked ? '' : 'none';
+        onChange();
       });
       if (def.description) master.title = def.description;
       group.appendChild(master);
@@ -272,22 +284,39 @@ function createIndicatorManager(chart, candleSeries, symbol, config) {
       // Per-item sub-rows with color swatches.
       for (const it of resolveItems(def)) {
         const swatch = `<i class="swatch" style="background:${it.color}"></i>${it.label}`;
-        const row = makeRow('panel-item', true, swatch, (on) => {
-          itemsFor(def)[it.id] = on;
+        const row = makeRow('panel-item', state[it.id] !== false, swatch, (checked) => {
+          itemsFor(def)[it.id] = checked;
           const inst = active.get(def.id);
-          if (inst && inst.setItemVisible) inst.setItemVisible(it.id, on);
+          if (inst && inst.setItemVisible) inst.setItemVisible(it.id, checked);
+          onChange();
         });
         subs.appendChild(row);
       }
       group.appendChild(subs);
-      subs.style.display = def.enabledByDefault ? '' : 'none';
+      subs.style.display = on ? '' : 'none';
 
       container.appendChild(group);
-      if (def.enabledByDefault) enable(def);
+      if (on) enable(def);
     }
   }
 
-  return { buildUI, onData };
+  // Snapshot of what's on and each indicator's per-item visibility (persisted).
+  function getState() {
+    const s = {};
+    for (const def of defs) {
+      s[def.id] = { on: active.has(def.id), items: { ...itemsFor(def) } };
+    }
+    return s;
+  }
+
+  return { buildUI, onData, getState };
+}
+
+// Persisted view state (timeframe, visible range, indicator toggles) so a page
+// refresh restores exactly what you were looking at instead of resetting.
+const VIEW_KEY = 'vpa.viewstate.v1';
+function loadViewState() {
+  try { return JSON.parse(localStorage.getItem(VIEW_KEY)) || {}; } catch (_) { return {}; }
 }
 
 async function main() {
@@ -302,24 +331,64 @@ async function main() {
   const hasBackend = timeframes.length > 0;
   if (!hasBackend) timeframes = ['sample'];
 
-  let current = timeframes.includes(defaultTf) ? defaultTf : timeframes[0];
+  // Restore saved view (only for the same instrument).
+  const savedView = loadViewState();
+  const sameSymbol = savedView.symbol === SYMBOL;
+  let current = (sameSymbol && savedView.tf && timeframes.includes(savedView.tf))
+    ? savedView.tf
+    : (timeframes.includes(defaultTf) ? defaultTf : timeframes[0]);
   let buttons = {};
 
-  const indicators = createIndicatorManager(chart, candleSeries, SYMBOL, CONFIG);
+  function saveViewState() {
+    try {
+      localStorage.setItem(VIEW_KEY, JSON.stringify({
+        symbol: SYMBOL,
+        tf: current,
+        range: chart.timeScale().getVisibleRange(),
+        indicators: indicators.getState(),
+      }));
+    } catch (_) { /* storage unavailable */ }
+  }
+  let saveTimer = null;
+  const scheduleSave = () => { clearTimeout(saveTimer); saveTimer = setTimeout(saveViewState, 300); };
+
+  const indicators = createIndicatorManager(chart, candleSeries, SYMBOL, CONFIG, {
+    initialState: sameSymbol ? (savedView.indicators || {}) : {},
+    onChange: saveViewState,
+  });
   indicators.buildUI(document.getElementById('panel'));
 
+  let firstLoad = true;
   async function select(tf) {
     current = tf;
     for (const [k, b] of Object.entries(buttons)) b.classList.toggle('active', k === tf);
     setStatus(`${SYMBOL} · ${tf} · loading…`);
+
+    const prevRange = chart.timeScale().getVisibleRange();
     const data = await loadData(tf);
     render(chart, candleSeries, volumeSeries, data);
     indicators.onData(data, tf);
+
+    // Restore the saved window on first load; keep the same window across a
+    // timeframe switch; otherwise fit everything.
+    const range = (firstLoad && sameSymbol && savedView.range) ? savedView.range
+      : (!firstLoad && prevRange) ? prevRange
+      : null;
+    try {
+      if (range) chart.timeScale().setVisibleRange(range);
+      else chart.timeScale().fitContent();
+    } catch (_) {
+      chart.timeScale().fitContent();
+    }
+    firstLoad = false;
+
     const n = (data.candles || []).length;
     setStatus(hasBackend ? `${SYMBOL} · ${tf} · ${n.toLocaleString()} bars` : 'sample data (no backend)');
+    saveViewState();
   }
 
   buttons = buildTimeframeBar(timeframes, current, select);
+  chart.timeScale().subscribeVisibleTimeRangeChange(scheduleSave);
   await select(current);
 }
 
