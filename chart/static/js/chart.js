@@ -175,6 +175,56 @@ function setStatus(text) {
   if (el) el.textContent = text;
 }
 
+/* Indicator manager — reads the global registry, renders a toggle button per
+ * indicator, and keeps enabled indicators in sync with the current data/tf.
+ * Indicators are self-contained modules; this is the only thing that drives
+ * them (see indicators/registry.js). */
+function createIndicatorManager(chart) {
+  const defs = window.IndicatorRegistry ? window.IndicatorRegistry.list() : [];
+  const active = new Map(); // id -> instance
+  let lastData = null;
+  let lastTf = null;
+
+  function enable(def, btn) {
+    const inst = def.create(chart);
+    active.set(def.id, inst);
+    if (btn) btn.classList.add('active');
+    if (lastData) inst.update(lastData, lastTf);
+  }
+
+  function disable(def, btn) {
+    active.get(def.id).destroy();
+    active.delete(def.id);
+    if (btn) btn.classList.remove('active');
+  }
+
+  function toggle(def, btn) {
+    active.has(def.id) ? disable(def, btn) : enable(def, btn);
+  }
+
+  // Re-run every enabled indicator against new data (e.g. timeframe switch).
+  function onData(data, tf) {
+    lastData = data;
+    lastTf = tf;
+    for (const inst of active.values()) inst.update(data, tf);
+  }
+
+  function buildUI(container) {
+    if (!container) return;
+    container.innerHTML = '';
+    for (const def of defs) {
+      const b = document.createElement('button');
+      b.textContent = def.label;
+      if (def.description) b.title = def.description;
+      b.addEventListener('click', () => toggle(def, b));
+      container.appendChild(b);
+      if (def.enabledByDefault) enable(def, b);
+    }
+  }
+
+  return { buildUI, onData };
+}
+
 async function main() {
   const { chart, candleSeries, volumeSeries } = createChart();
 
@@ -185,12 +235,16 @@ async function main() {
   let current = timeframes.includes('5m') ? '5m' : timeframes[0];
   let buttons = {};
 
+  const indicators = createIndicatorManager(chart);
+  indicators.buildUI(document.getElementById('ind-bar'));
+
   async function select(tf) {
     current = tf;
     for (const [k, b] of Object.entries(buttons)) b.classList.toggle('active', k === tf);
     setStatus(`${SYMBOL} · ${tf} · loading…`);
     const data = await loadData(tf);
     render(chart, candleSeries, volumeSeries, data);
+    indicators.onData(data, tf);
     const n = (data.candles || []).length;
     setStatus(hasBackend ? `${SYMBOL} · ${tf} · ${n.toLocaleString()} bars` : 'sample data (no backend)');
   }

@@ -6,6 +6,13 @@ All notable changes to this project. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- Indicator framework: pluggable module registry
+  (`chart/static/js/indicators/registry.js`) + a toggle bar in the chart header;
+  indicators self-register and can be turned on/off individually at runtime.
+- **Sessions H/L** indicator (`chart/static/js/indicators/sessions.js`): draws
+  dashed, color-coded rays from each Asia/London/NY session's high and low,
+  extending right until a later candle tests the level. Session windows anchored
+  to America/Chicago (DST-aware); on by default; skipped on the 1d timeframe.
 - Documentation scaffolding: `CHANGELOG.md`, `NOTES.md`, and CLAUDE.md
   policies for keeping the changelog, notes, and `requirements.txt` current.
 - CLAUDE.md conventions: broker-abstraction architecture rule; indicators as

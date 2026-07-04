@@ -5,6 +5,35 @@ dated + timed and terse (≤50 lines). Split into `notes/` when this gets large.
 
 ---
 
+## 2026-07-03 19:43 CDT — Indicator framework + Sessions H/L
+
+**Built the indicator system** (first of the pluggable chart modules):
+- `indicators/registry.js` — global registry; each indicator self-registers.
+  The chart renders a toggle button per indicator and drives enable/disable +
+  data updates. Indicators never reference each other.
+- `indicators/sessions.js` — **Sessions H/L**. Per session (Asia/London/NY) per
+  day, find high & low; draw a **dashed, color-coded ray** from that point
+  extending right until a later candle trades back to the level, then stop.
+  Colors: Asia blue, London amber, NY purple. On by default; skipped on 1d.
+
+**Decisions / assumptions:**
+- Session hours anchored to **America/Chicago** (exchange tz), DST-aware via
+  `Intl`. Using the "Full sessions" preset hours *as Chicago local time*:
+  Asia 18:00–03:00, London 03:00–08:00, NY 08:00–17:00. Single config block at
+  top of `sessions.js` — easy to retune. (Note: preset was labeled ET; treated
+  literally in CT per the tz choice. Flag if you meant ET clock → convert −1h.)
+- One line series per ray (LWC can't put overlapping-time levels in one series).
+  Capped at the 60 most-recent session instances (`MAX_SESSIONS`) so high TFs
+  spanning many days don't spawn thousands of series.
+
+**Verified** headlessly against real 5m NQ data: rays horizontal, dashed,
+well-formed; session assignment matches Chicago windows; 1d draws nothing.
+
+**Deferred:** vertical session-boundary markers (earlier idea) — sticking to the
+"just show H/L rays" version for now.
+
+---
+
 ## 2026-07-03 19:32 CDT — Project vision & scaffolding
 
 **What this is:** an algorithmic trading strategy project. Core = a volume
