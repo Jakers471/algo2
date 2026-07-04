@@ -46,16 +46,27 @@ def _empty() -> dict:
     return {"sessions": session_names(), "rays": [], "verticals": []}
 
 
-def compute_sessions(df: pd.DataFrame, max_sessions: int = MAX_SESSIONS) -> dict:
-    """OHLCV DataFrame (tz-aware UTC index) -> session H/L rays + verticals."""
+def session_instances(df: pd.DataFrame, max_sessions: int = MAX_SESSIONS) -> list[dict]:
+    """Group bars into session instances (one per session per day). Shared by the
+    sessions H/L and volume-profile indicators so they use the SAME grouping.
+
+    Returns the most-recent `max_sessions` instances (by start), each:
+      {
+        "session":   "Asia"|"London"|"NY",
+        "positions": np.ndarray of the instance's bar row-indices (ascending),
+        "start_pos", "end_pos",           # first / last bar of the session
+        "hi_pos", "hi_price",             # where the session high formed
+        "lo_pos", "lo_price",             # where the session low formed
+      }
+    Positions index into the ORIGINAL `df` rows.
+    """
     if df is None or df.empty:
-        return _empty()
+        return []
 
     local = df.index.tz_convert(TZ)
     minute = local.hour.values * 60 + local.minute.values
     highs = df["high"].to_numpy()
     lows = df["low"].to_numpy()
-    times = df.index.view("int64") // 1_000_000_000  # Unix seconds (UTC)
     n = len(df)
 
     # Assign each bar to a session (windows here don't overlap -> first match).
@@ -79,7 +90,7 @@ def compute_sessions(df: pd.DataFrame, max_sessions: int = MAX_SESSIONS) -> dict
 
     keep = sess >= 0
     if not keep.any():
-        return _empty()
+        return []
 
     sub = pd.DataFrame({
         "pos": np.arange(n)[keep],
@@ -89,13 +100,13 @@ def compute_sessions(df: pd.DataFrame, max_sessions: int = MAX_SESSIONS) -> dict
         "low": lows[keep],
     })
 
-    # One instance per (session, day): find start/end bar and where hi/lo formed.
     insts = []
     for (si, _day), g in sub.groupby(["sess", "anchor"], sort=False):
         hi_i = int(g["high"].values.argmax())
         lo_i = int(g["low"].values.argmin())
         insts.append({
-            "sess": int(si),
+            "session": SESSIONS[int(si)]["name"],
+            "positions": g["pos"].to_numpy(),
             "start_pos": int(g["pos"].iloc[0]),
             "end_pos": int(g["pos"].iloc[-1]),
             "hi_price": float(g["high"].iloc[hi_i]),
@@ -105,7 +116,19 @@ def compute_sessions(df: pd.DataFrame, max_sessions: int = MAX_SESSIONS) -> dict
         })
 
     insts.sort(key=lambda x: x["start_pos"])
-    insts = insts[-max_sessions:]
+    return insts[-max_sessions:]
+
+
+def compute_sessions(df: pd.DataFrame, max_sessions: int = MAX_SESSIONS) -> dict:
+    """OHLCV DataFrame (tz-aware UTC index) -> session H/L rays + verticals."""
+    insts = session_instances(df, max_sessions)
+    if not insts:
+        return _empty()
+
+    highs = df["high"].to_numpy()
+    lows = df["low"].to_numpy()
+    times = df.index.view("int64") // 1_000_000_000  # Unix seconds (UTC)
+    n = len(df)
 
     def terminate(pos: int, price: float, up: bool) -> int:
         """Time of the first bar after `pos` that trades to `price`, else last."""
@@ -118,7 +141,7 @@ def compute_sessions(df: pd.DataFrame, max_sessions: int = MAX_SESSIONS) -> dict
 
     rays, verticals = [], []
     for it in insts:
-        name = SESSIONS[it["sess"]]["name"]
+        name = it["session"]
         rays.append({
             "session": name, "kind": "high", "price": it["hi_price"],
             "start": int(times[it["hi_pos"]]),

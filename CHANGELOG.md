@@ -9,7 +9,15 @@ All notable changes to this project. Format loosely follows
 - **`src/` backend** (the "brain"): `indicators/` (pure math), plus `strategy/`,
   `brokers/` (with a `Broker` interface skeleton), and `backtest/` placeholders.
 - `src/indicators/sessions.py` — session H/L math (OHLCV → rays + verticals),
-  now the single source of truth for the chart *and* future backtests.
+  now the single source of truth for the chart *and* future backtests. Exposes a
+  shared `session_instances()` so indicators reuse one session grouping.
+- **Volume Profile** — `src/indicators/volume_profile.py`: per-session volume
+  profile with overlap-weighted volume distribution, POC, and value area
+  (VAL/VAH). `bins` and `value_area_pct` are computation parameters (not display
+  filters), so the chart and strategy get identical numbers. Served at
+  `/api/indicators/volume_profile`; rendered as a sideways histogram
+  (`chart/static/js/indicators/volume_profile.js`) with shaded value area, a
+  highlighted POC + POC line, and per-session toggles. Off by default.
 - `/api/indicators/sessions` endpoint serving the computed levels.
 - Indicator framework: pluggable module registry
   (`chart/static/js/indicators/registry.js`) + a floating control panel on the

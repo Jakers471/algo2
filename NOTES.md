@@ -5,6 +5,32 @@ dated + timed and terse (≤50 lines). Split into `notes/` when this gets large.
 
 ---
 
+## 2026-07-03 20:13 CDT — Volume Profile indicator + params discussion
+
+**Built per-session Volume Profile** (`src/indicators/volume_profile.py`): for
+each session's high→low range, bin the price, distribute each bar's volume
+**overlap-weighted** across the rows it spans (conserves total volume — verified),
+then derive **POC** and **value area (VAL/VAH)**. Reuses `session_instances()`.
+Served at `/api/indicators/volume_profile`; JS renders a sideways histogram
+(value area shaded, POC highlighted + line), per-session toggle, off by default.
+
+**Params clarified with Jake (important design call):**
+- `bins`/row-size and `value_area_pct` are **computation parameters in the
+  backend**, NOT frontend visual filters. Changing bins → recompute (refetch),
+  so the chart and strategy always agree. Verified live: POC moved
+  21940→21933→21930 as bins went 12→24→48.
+- **POC is an OUTPUT** ("the truth"), not a knob — but its value depends on bin
+  resolution. **`value_area_pct` (70%) does NOT move POC**; it only sets how wide
+  VAL/VAH sit around it. Session H/L = pure facts.
+- For strategy: session H/L + POC are computed signals; the 70% gate (→ VAL/VAH)
+  is the tunable hyperparameter if entering off the value edges. All come from
+  one `compute_volume_profile(df, bins, value_area_pct)` call.
+
+**Verified**: volume conserved, VAL≤POC≤VAH, VA≥70%, one POC row; API 60
+profiles; renderer draws 1440 rects + 60 POC lines, toggles, skips 1d, detaches.
+
+---
+
 ## 2026-07-03 20:03 CDT — Backend/frontend split (src/) 
 
 **Decision (Jake):** indicator *logic* belongs in Python, not JS — the algo will

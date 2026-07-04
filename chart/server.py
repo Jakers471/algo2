@@ -31,6 +31,7 @@ DATA_DIR = os.path.join(REPO_ROOT, "data")
 # Make the backend (src/) importable — the chart is the frontend, src/ owns math.
 sys.path.insert(0, REPO_ROOT)
 from src.indicators.sessions import compute_sessions  # noqa: E402
+from src.indicators.volume_profile import compute_volume_profile  # noqa: E402
 
 # Show this many most-recent bars per timeframe.
 DEFAULT_LIMIT = 10_000
@@ -124,6 +125,26 @@ def api_sessions():
         return parsed
     symbol, tf, limit = parsed
     result = compute_sessions(_load_df(symbol, tf, limit))
+    return jsonify(symbol=symbol, tf=tf, **result)
+
+
+@app.route("/api/indicators/volume_profile")
+def api_volume_profile():
+    parsed = _request_params()
+    if len(parsed) == 2:
+        return parsed
+    symbol, tf, limit = parsed
+    try:
+        bins = int(request.args.get("bins", 24))
+    except ValueError:
+        bins = 24
+    bins = max(5, min(bins, 200))
+    try:
+        va = float(request.args.get("value_area_pct", 0.70))
+    except ValueError:
+        va = 0.70
+    va = max(0.1, min(va, 0.99))
+    result = compute_volume_profile(_load_df(symbol, tf, limit), bins=bins, value_area_pct=va)
     return jsonify(symbol=symbol, tf=tf, **result)
 
 
