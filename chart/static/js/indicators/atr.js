@@ -37,19 +37,26 @@
       const symbol = ctx.symbol || 'NQ';
       const cfg = atrCfg(ctx.config);
 
-      const series = ctx.chart.addLineSeries({
+      // v5 has real sub-panes: give ATR its OWN pane below the price pane (a true
+      // MACD/RSI-style panel) instead of sharing the price pane's lower band.
+      // addSeries auto-creates the pane when the index doesn't exist yet.
+      const ATR_PANE = 1;
+      const series = ctx.chart.addSeries(LightweightCharts.LineSeries, {
         color: cfg.color,
         lineWidth: 2,
-        priceScaleId: 'atr',
         priceLineVisible: false,
         lastValueVisible: false,
         crosshairMarkerVisible: true,
-      });
-      // Dock the ATR line in the lower `height` fraction of the pane, on its own
-      // auto-scaled price scale (so it fills the band regardless of price level).
-      ctx.chart.priceScale('atr').applyOptions({
-        scaleMargins: { top: 1 - cfg.height, bottom: 0 },
-      });
+      }, ATR_PANE);
+      // Size the ATR pane to ~height_pct of the chart. Panes divide space by
+      // stretch factor; the main pane keeps its default (1), so h/(1-h) yields
+      // roughly `height` of the total. A little scale padding keeps the line off
+      // the pane edges. All cosmetic — never fail the indicator over layout.
+      try {
+        const panes = ctx.chart.panes();
+        if (panes[ATR_PANE]) panes[ATR_PANE].setStretchFactor(cfg.height / (1 - cfg.height));
+        series.priceScale().applyOptions({ scaleMargins: { top: 0.15, bottom: 0.1 } });
+      } catch (_) { /* cosmetic only */ }
 
       let reqId = 0;
 
@@ -72,7 +79,16 @@
 
       return {
         update,
-        destroy() { ctx.chart.removeSeries(series); },
+        destroy() {
+          ctx.chart.removeSeries(series);
+          // Remove the now-empty ATR pane so the price pane reclaims the space.
+          try {
+            const panes = ctx.chart.panes();
+            if (panes[ATR_PANE] && panes[ATR_PANE].getSeries().length === 0) {
+              ctx.chart.removePane(ATR_PANE);
+            }
+          } catch (_) { /* pane may already be gone */ }
+        },
       };
     },
   });

@@ -74,7 +74,7 @@ function createChart() {
     autoSize: true,
   });
 
-  const candleSeries = chart.addCandlestickSeries({
+  const candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
     upColor: COLORS.up,
     downColor: COLORS.down,
     borderVisible: false,

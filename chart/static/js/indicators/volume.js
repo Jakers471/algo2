@@ -36,7 +36,7 @@
       const symbol = ctx.symbol || 'NQ';
       const cfg = volCfg(ctx.config);
 
-      const series = ctx.chart.addHistogramSeries({
+      const series = ctx.chart.addSeries(LightweightCharts.HistogramSeries, {
         priceFormat: { type: 'volume' },
         priceScaleId: 'vol',
         lastValueVisible: false,

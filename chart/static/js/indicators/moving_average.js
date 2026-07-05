@@ -50,7 +50,7 @@
       // crosshair marker — these are context lines, not the primary series.
       const series = {};
       for (const m of list) {
-        series[m.id] = ctx.chart.addLineSeries({
+        series[m.id] = ctx.chart.addSeries(LightweightCharts.LineSeries, {
           color: m.color,
           lineWidth: 1,
           priceLineVisible: false,
