@@ -28,8 +28,9 @@ import numpy as np
 import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(os.path.dirname(HERE))
-sys.path.insert(0, HERE)
+ENGINE = os.path.dirname(HERE)                       # engine/ (frozen core + helpers)
+REPO = os.path.dirname(os.path.dirname(ENGINE))      # repo root
+sys.path.insert(0, ENGINE)
 sys.path.insert(0, REPO)
 from grade import grade  # noqa: E402
 from anchors import session_anchors, impulse_anchors, meta_frame  # noqa: E402
