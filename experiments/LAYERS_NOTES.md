@@ -202,6 +202,45 @@ everywhere); 5m doesn't lack regime detection, the engine is timeframe-blind (5m
 Next: write the canonical `grade(anchor) → {metrics + profile}` + anchor-recursion spec as
 a design doc before any more views.
 
+**18 — GRADE_SPEC + build plan.** Wrote `experiments/GRADE_SPEC.md` (one `grade(bars) ->
+Grade`, full metric set every anchor; `strength` = net/range and `efficiency` = net/travel
+named apart; recursion via meta-candles; anchors clock-given at L1, structure-detected
+below; timeframe ≠ layer). Jake: *"commit it and then explain how you will build it, is it
+one masive file? modular? how will you present new pngs, can you cover all this multi scale
+at once?"* → Plan: **modular, ~5 small files** (`grade`/`anchors`/`layers`/`viz`/`run`,
+~500–600 lines, core is the *least* code); two payoff views (unified drill-down + multi-
+scale ribbon); build order = grade → anchors → layers → viz, each checkpointed.
+
+**19 — Engine built (`experiments/engine/`), steps 1–4 all proven.**
+- **grade.py** — the one measurement; `validate_grade.py` shows it reproduces the Layer-1
+  anatomy numbers EXACTLY (only `efficiency` and `POC` differ, by the two intentional spec
+  redefinitions). No accidental drift.
+- **anchors.py** — `session_anchors` (clock) + `impulse_anchors` (rolling grade() → IMPULSE
+  runs, same-direction bursts gap-merged so a staggered impulse is one anchor) +
+  `meta_frame`. Matches leg_states / the eye (chop #2's +139 up-rip and −110 down-drop both
+  caught; the bull's two pushes bracket its weak grind).
+- **layers.py** — `descend` (grade → recurse into impulse sub-anchors) + `ascend` (collapse
+  to meta-candles, grade). Proven: chop #2 grades WHIPSAW yet nests real impulses inside;
+  **12 chop sessions collapse to a clean multi-session IMPULSE DN (eff 0.89)** — chop at one
+  scale composing into a trend at the next, one function at every node.
+- **viz.py / run.py** — `drilldown.png` (anatomy numbers + impulse states + profile UNIFIED
+  in one panel — fixes "leg_states lost the anatomy data") and `multiscale.png` (L3/L1/L2
+  regime ribbons at once).
+
+**20 — The cascade (the payoff view).** Jake: *"i need 3 screenshots independently of price
+shown in the same format, showing everything… pull a piece for the middle from layer 3, then
+a layer 2 within that… show from top down. price within price within price. make it obvious
+where each layer is coming from in the layer above."* → `cascade.py` → `cascade.png`: three
+panels, same drill-down format, each a zoomed-in piece of the one above with the parent
+boxing the child + "zoom ↓". A 5-session **CONSOLIDATION** → a 1m **WHIPSAW** up-move → a
+clean 1m **IMPULSE UP**, structure refining as you descend, same `grade()` at every zoom.
+Jake: *"yes fucking exactly like this."*
+
+**Frozen foundation.** `grade.py` / `anchors.py` / `layers.py` are now stable like
+`range_hop.py` — **do not edit**; changing a formula silently changes every scale and breaks
+no-drift. Extend at the edges (new views / anchor types), never the core. How-it-all-works +
+the frozen rule are written up in `experiments/engine/README.md`.
+
 ---
 
 ## Open questions / to decide
