@@ -58,8 +58,42 @@ python experiments/engine/research/impulse_sequence.py --sessions 400
 - **Null result:** impulses born out of CONSOLIDATION are *not* bigger than out of WHIPSAW
   (both ~20 pts) — compression doesn't predict impulse *size* (maybe direction/cleanliness).
 
+### `state_graphs.py` — general graphs across all scales (PNG)
+Six-panel PNG (`out/state_graphs.png`): state mix by scale; impulses by session; impulses
+by time of day (Chicago); what state follows an impulse; L2 impulses/session by L3 state;
+sub-impulses inside an L1 impulse.
+```bash
+python experiments/engine/research/state_graphs.py            # 6 months (default)
+```
+**Findings (6mo):** consolidation/whipsaw dominate every scale (~65-70%); impulses peak at
+the **NY open (9-10am CT)**; **an impulse is followed by WHIPSAW ~83%** (moves exhaust into
+chop); when **L3 is impulsive there are FEWER sub-impulses** (clean trends run smooth; chop
+= many cancelling impulses); an L1 impulse session is ~5:1 same-direction sub-impulses.
+
+### `state_examples.py` — what WHIPSAW vs CONSOLIDATION look like (PNG)
+3x2 grid (`out/state_examples.png`), scales x {whipsaw, consolidation}, each a real example
+with its volume profile. Both go nowhere; the **profile** separates them — consolidation =
+fat POC (acc ~0.7), whipsaw = spread/thin (acc ~0.2-0.3). Same signature at all 3 scales.
+
+### `sequence_patterns.py` — impulse -> pause -> ? (edge-shaped)
+The 3-step pattern: does a trend continue after a pause, split by clean (consolidation) vs
+noisy (whipsaw)? Bar PNG (`out/sequence_patterns.png`) + plain-english.
+```bash
+python experiments/engine/research/sequence_patterns.py --sessions 300
+```
+**Findings:** the up-continues/down-reverts asymmetry appears a THIRD time. **UP impulse →
+~60% continue** (pause type doesn't matter). **DN impulse → reverses**, and a **clean
+CONSOLIDATION after a down move → 60% reversal UP** (the strongest, most tradeable cell) vs
+a whipsaw pause = coinflip. So the *pause type* is a real filter, but only for bears.
+
 ## Status
 
 Descriptive only — no entry/exit/stop/sizing rules yet. This is the **measure-what's-true**
-phase; the edge (built on the `(L3, L1, L2)` triple) comes after. Heavier than the views
-(they touch 1m data + rolling grade), so they run on samples where noted.
+phase; the edge (built on the `(L3, L1, L2)` triple + these transition tilts) comes after.
+Heavier than the views (they touch 1m data + rolling grade), so they run on samples/windows.
+
+### First edge-shaped observations (still descriptive)
+- Down impulse → clean consolidation → **~60% reversal up** (accumulation base).
+- Up impulse → any pause → **~60% continuation up**.
+- Impulses die into whipsaw (~83%); NY-open is the impulse hotspot; clean higher-scale
+  trends have *fewer* sub-impulses.
