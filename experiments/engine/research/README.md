@@ -95,6 +95,16 @@ python experiments/engine/research/sequence_patterns.py --sessions 300
 CONSOLIDATION after a down move → 60% reversal UP** (the strongest, most tradeable cell) vs
 a whipsaw pause = coinflip. So the *pause type* is a real filter, but only for bears.
 
+### `find_continuation.py` — up-leg -> consolidation -> up-leg (connected)
+Searches for a CONNECTED bullish continuation at each scale — (impulse/grind up) ->
+consolidation -> (impulse/grind up), phases contiguous — and draws the clearest example
+per scale with the 3 phases shaded (`out/continuation_examples.png`). Found at all three
+scales (L3 multi-session, L1 3-session, L2 impulse->base->impulse). The consolidation box
+is the entry zone; the same structure recurs fractally.
+```bash
+python experiments/engine/research/find_continuation.py
+```
+
 ## Status
 
 Descriptive only — no entry/exit/stop/sizing rules yet. This is the **measure-what's-true**
