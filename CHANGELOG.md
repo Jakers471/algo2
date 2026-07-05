@@ -6,6 +6,40 @@ All notable changes to this project. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Volume reading in the Snapshot** — `src/strategy/readings/volume.py` derives
+  four facts from the time-based volume indicator at the current bar: `bar`
+  (this bar's volume), `rvol` (relative volume vs the last 20 bars — a spike reads
+  >1), `delta` (net signed volume over the last 20 bars — buying vs selling), and
+  `vexp` (volume expansion = avg(fast bars) / avg(window bars) — ~1 steady, rising
+  = ramping up; catches "steady → boom" that rvol's single-bar spike misses). Added
+  as a `volume` field on the Snapshot; shown in the monitor's SNAPSHOT bucket beside
+  the profile's session-cumulative `vol`. Lookbacks are config knobs
+  (`strategy.readings.volume_window` = 20, `volume_fast` = 3), resolved in
+  `build_snapshot` and passed to the reading (readings stay pure). Monitor gains
+  `--legend` (a guide to what every field means).
+- **Replay monitor: two pipeline views** (`tools/replay_monitor.py --view`):
+  `horizontal` (default) a bucketed grid — one boxed column-group per phase
+  (SNAPSHOT/SCORE/DECIDE/MANAGE), one row per bar; `vertical` a funnel block per
+  bar; `snapshot` the facts-only table. Consistent phase palette across views
+  (SNAPSHOT=cyan · SCORE=yellow · DECIDE=magenta · MANAGE=blue), semantic value
+  colors, ANSI-on-Windows, `--no-color`. `/api/replay/state` now returns the full
+  `pipeline.run()` result (`snapshot, scores, intent, action`) instead of just the
+  snapshot; SCORE/DECIDE/MANAGE cells show `—` until those stub phases get logic —
+  the layout lights up automatically as each phase returns data. Build roadmap in
+  `src/strategy/README.md`.
+- **Strategy pipeline scaffold** (`src/strategy/`, CLAUDE.md #7): one-directional
+  `indicators → readings → snapshot → score → decide → manage → pipeline`, each
+  stage talking only through stable contracts. Live now: `readings/volume_profile.py`
+  (raw VP → forming-session facts) + `snapshot.py` (`build_snapshot` → the Snapshot
+  contract carrying `price` + the volume-profile reading). Seam-only stubs (no
+  logic yet) as stage FOLDERS mirroring the tiers: `score/`, `decide/`, `manage/`,
+  each `base.py` (interface + name→version registry) + version modules (scorer
+  `v1`, decider `v1`, manager `fixed`/`trailing`) that self-register;
+  `pipeline.py` wires the config-chosen versions. New `strategy.use` block in
+  `algo_config.yaml` (per-stage version selectors) via `strategy_config()`.
+- The **replay monitor now reads the true Snapshot**: `/api/replay/state` builds
+  it with `build_snapshot` (the same object the strategy will consume) instead of
+  an ad-hoc volume-profile calc; `tools/replay_monitor.py` reads `snapshot.*`.
 - **Volume** indicator (time-based) — extracted the per-bar volume histogram out
   of the chart core into a proper pluggable indicator, matching convention #5.
   Math in `src/indicators/volume.py` (pure: OHLCV in, per-bar `{time, value, up}`

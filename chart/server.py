@@ -35,6 +35,7 @@ from src.indicators.sessions import compute_sessions  # noqa: E402
 from src.indicators.volume_profile import compute_volume_profile  # noqa: E402
 from src.indicators.volume import compute_volume  # noqa: E402
 from src.indicators.moving_average import compute_moving_averages  # noqa: E402
+from src.strategy import pipeline as strategy_pipeline  # noqa: E402
 
 # Order timeframes coarse-to-fine for display; only those with a parquet show up.
 TF_ORDER = ["1m", "5m", "15m", "60m", "1d"]
@@ -215,10 +216,12 @@ def api_moving_average():
     return jsonify(symbol=symbol, tf=tf, **result)
 
 
-def _replay_readout():
-    """Forming-session readout for the stored replay `asof`, via
-    compute_volume_profile (single source of truth). Cached per-asof so repeated
-    polls are free; runs on the monitor's poll, off the browser's replay loop."""
+def _replay_pipeline():
+    """Run the full strategy pipeline (src.strategy) for the stored replay `asof`
+    and return {snapshot, scores, intent, action} — the SAME thing the strategy
+    consumes; the terminal monitor renders it. Cached per-asof so repeated polls
+    are free; runs on the monitor's poll, off the browser's replay loop. (score/
+    decide/manage are stubs today, so scores/intent/action are empty until built.)"""
     st = _replay
     if not (st["active"] and st["asof"] and st["symbol"] and st["tf"]):
         return None
@@ -227,28 +230,25 @@ def _replay_readout():
     key = (st["symbol"], st["tf"], st["asof"])
     if key in _readout_cache:
         return _readout_cache[key]
-    readout = None
+    result = None
     try:
         df = _load_df(st["symbol"], st["tf"], algo_config.chart_config()["limit"])
         df = df.loc[df.index <= pd.Timestamp(st["asof"], unit="s", tz="UTC")]
-        profs = compute_volume_profile(df).get("profiles", [])
-        cur = next((p for p in profs if p["start"] <= st["asof"] <= p["end"]), None)
-        if cur is None and profs:
-            cur = profs[-1]
-        if cur:
-            readout = {"session": cur["session"], "poc": cur["poc"],
-                       "vah": cur["vah"], "val": cur["val"], "vol": cur["total_volume"]}
+        result = strategy_pipeline.run(df, st["symbol"], st["tf"])
+        if result.get("snapshot") is None:
+            result = None
     except Exception:
-        readout = None
+        result = None
     _readout_cache.clear()  # keep only the latest asof
-    _readout_cache[key] = readout
-    return readout
+    _readout_cache[key] = result
+    return result
 
 
 @app.route("/api/replay/state", methods=["GET", "POST"])
 def api_replay_state():
     """POST: the chart pushes its replay cursor {active, symbol, tf, asof}.
-    GET: the terminal monitor polls current state + the computed readout."""
+    GET: the terminal monitor polls current state + the pipeline result
+    {snapshot, scores, intent, action}."""
     if request.method == "POST":
         data = request.get_json(force=True, silent=True) or {}
         _replay["active"] = bool(data.get("active", False))
@@ -259,9 +259,9 @@ def api_replay_state():
             _replay["asof"] = None  # drop stale position on exit
         return ("", 204)
     resp = {k: _replay[k] for k in ("active", "symbol", "tf", "asof")}
-    readout = _replay_readout()
-    if readout:
-        resp.update(readout)
+    result = _replay_pipeline()
+    if result:
+        resp.update(result)  # snapshot, scores, intent, action
     return jsonify(resp)
 
 

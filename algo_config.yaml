@@ -1,4 +1,5 @@
 # algo_config.yaml — single source of truth for every tunable knob.
+# In-depth guide to every section/knob: algo_config.README.md
 #
 # The backend reads this LIVE (edit it and refresh the chart to see changes — no
 # server restart needed). The chart, the indicators, and — once wired up — the
@@ -46,6 +47,22 @@ moving_averages:
     - { type: sma, period: 50,  color: "#ffb74d" }   # orange      — medium
     - { type: sma, period: 100, color: "#f06292" }   # rose        — slower
     - { type: sma, period: 200, color: "#ba68c8" }   # purple      — slow
+
+# ---- Strategy pipeline ----------------------------------------------------
+# Mirrors src/strategy/: readings -> snapshot -> score -> decide -> manage.
+# `use` picks which VERSION of each swappable stage runs — change one word to
+# swap that stage, nothing else moves. Per-version knobs (weights/thresholds)
+# get added here LATER, once defined. For now score/decide/manage are stubs.
+strategy:
+  use:
+    scorer:  v1
+    decider: v1
+    manager: fixed
+
+  # readings — knobs for deriving facts from raw indicators (the SNAPSHOT base).
+  readings:
+    volume_window: 20        # baseline lookback: rvol, delta, and vexp's slow avg
+    volume_fast: 3           # vexp fast avg (short-term); vexp = avg(fast) / avg(window)
 
 # ---- Chart defaults -------------------------------------------------------
 chart:

@@ -93,6 +93,25 @@ def moving_averages_config() -> dict:
     }
 
 
+def strategy_config() -> dict:
+    """Pipeline config: which VERSION of each stage runs (`use` slots) + `readings`
+    knobs for deriving facts. Stage knobs (weights/thresholds) get added later."""
+    cfg = load().get("strategy", {})
+    use = cfg.get("use", {}) or {}
+    readings = cfg.get("readings", {}) or {}
+    return {
+        "use": {
+            "scorer": use.get("scorer", "v1"),
+            "decider": use.get("decider", "v1"),
+            "manager": use.get("manager", "fixed"),
+        },
+        "readings": {
+            "volume_window": int(readings.get("volume_window", 20)),
+            "volume_fast": int(readings.get("volume_fast", 3)),
+        },
+    }
+
+
 def chart_config() -> dict:
     cfg = load().get("chart", {})
     return {

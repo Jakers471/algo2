@@ -5,6 +5,76 @@ dated + timed and terse (≤50 lines). Split into `notes/` when this gets large.
 
 ---
 
+## 2026-07-04 — First reading added: time-based Volume (base-building begins)
+
+Jake's plan: build the FULL fact-base (all readings into the Snapshot) and watch
+them in replay BEFORE scoring. First run of the onboarding recipe (CLAUDE #7):
+raw indicator → reading → Snapshot field → build_snapshot → monitor column.
+
+Added `readings/volume.py` deriving 3 facts from the per-bar volume indicator:
+`bar` (this bar), `rvol` (vs last 20-bar avg — spike >1), `delta` (net signed vol
+last 20 bars — buying vs selling). New `volume` field on Snapshot; shown in the
+monitor SNAPSHOT bucket beside the profile's session-cumulative `vol` (a distinct
+fact). Window=20 hardcoded (TODO: config knob). Verified live: bar 700 / rvol 0.2 /
+Δ -11k on the last NQ 5m bar. Next: keep adding readings, then score.
+
+---
+
+## 2026-07-04 — Replay monitor wired to the pipeline; two views
+
+**Decision:** the terminal monitor gets two pipeline layouts + the facts table,
+selectable via `--view` (Jake may use either; both maintained):
+- `horizontal` (default) — bucketed grid, one boxed column-group per phase, one row
+  per bar (the snapshot table extended rightward through the pipeline).
+- `vertical` — a funnel block per bar, phases stacked top→bottom.
+- `snapshot` — just the SNAPSHOT facts (today's table).
+
+**Consistent phase palette across views:** SNAPSHOT=cyan · SCORE=yellow ·
+DECIDE=magenta · MANAGE=blue (tints borders/gutters/labels). Values are semantic
+(POC yellow, VAH green/VAL red, conv green ≥0.60, dir/setup green-long/red-short,
+stop red/target green). No meters/animation — flat + professional per Jake.
+
+**Wired to the live pipeline:** `/api/replay/state` now returns
+`strategy.pipeline.run()` = `{snapshot, scores, intent, action}` (was snapshot
+only). Monitor renders whichever view. score/decide/manage are stubs → their cells
+show `—`; **the layout is already in place and lights up automatically** as each
+phase gets logic (no monitor changes needed). Verified all 3 views on live NQ data.
+
+**Build roadmap (down the pipe, Jake's timeline):** (1) design how VP facts are
+measured → fill `readings/` + more Snapshot fields; (2) `score/v1` weights (facts→
+signals→conviction); (3) `decide/v1` rules (scores→intent); (4) `manage/`
+fixed/trailing lifecycle (intent→actions); (5) execution layer + broker adapter
+(actions→Broker). Each step surfaces in the monitor the moment it returns data.
+
+---
+
+## 2026-07-04 — Strategy pipeline scaffold (skeleton only; decisions deferred)
+
+**Locked the mental model** with Jake: `indicators (raw) → readings (facts) →
+snapshot (contract) → score (opinions) → decide (intent) → manage (actions) →
+pipeline`. readings=facts vs score=opinions kept separate. Stages talk only through
+stable contracts (Snapshot/Scores/Intent/Action); adding a Snapshot field is
+additive/safe. score/decide/manage are per-stage swappable via a name→version
+registry, chosen in `algo_config.yaml → strategy.use`. Documented as CLAUDE.md #7.
+
+**Built the skeleton, NOT the logic (deliberate).** Jake wants to rehearse how he
+measures VP numbers / defines weights before any of that is coded. So: `readings/
+volume_profile.py` + `snapshot.py` are LIVE but only carry the *same* numbers the
+replay reader already showed (session/POC/VAH/VAL/vol + price) — zero new
+derivations, zero opinions. `score`/`decide`/`manage` are empty seam stubs;
+`pipeline.run()` returns the live snapshot with empty scores/intent/action. Config
+has only the `use:` selectors — no weights/thresholds yet.
+
+**Repointed the replay monitor to the TRUE Snapshot:** `/api/replay/state` now
+calls `build_snapshot` (the exact object the strategy will consume), monitor reads
+`snapshot.*`. Same line on screen, real state underneath.
+
+**Next (Jake's timeline):** design conversation on what facts to derive from VP and
+how to measure price relative to them — then fill readings + score. Use the
+indicator-onboarding questions each time.
+
+---
+
 ## 2026-07-04 — Volume made a first-class indicator module
 
 **Goal (user):** "do with volume as volume profile is" — the time-based volume

@@ -34,6 +34,12 @@ what you see on the chart is exactly what a backtest/strategy would run on. The
 frontend fetches it from `/api/config`; even colors are config-driven. Add a new
 knob here first, then read it via `src/config.py` — never hardcode a tunable.
 
+**Every knob added to `algo_config.yaml` MUST be documented thoroughly in
+`algo_config.README.md`** (the in-depth config guide) — what it does, what changing
+it affects (with a tuning cheat-sheet where useful), and where it's read — not just
+the short inline YAML comment. If one knob feeds several outputs, say so explicitly.
+Treat this as part of adding the knob, not an afterthought.
+
 ### 4. Architecture — strategy decoupled from broker
 
 The trading strategy MUST stay independent of broker-specific code. A **broker
@@ -70,6 +76,56 @@ afterthought.
   dependency is added here immediately, with a version floor and a short
   inline comment on what it's for. Remove entries that are no longer used.
 
-### 7. Extending these conventions
+### 7. The strategy pipeline — one direction, swappable stages
+
+Turning indicators into trades flows in ONE direction; each stage does a single
+job and talks to the next ONLY through a stable contract (never reaching into the
+previous stage's internals). Lives in `src/strategy/`:
+
+Tier map — each folder IS a tier; the tree mirrors the flow top-to-bottom
+(✅ live · 🟡 seam-only stub · ⬜ not built yet):
+
+```
+ bars ─► src/indicators/*            raw math (POC, MA, volume) — also feed chart   ✅ 1
+      ─► src/strategy/
+           readings/                 raw indicators → FACTS ("price +38 above POC") ✅ 2
+           snapshot.py               assemble readings → ONE Snapshot = CONTRACT     ✅ 3
+           score/   (base + v1)      facts → weighted signals + conviction. OPINIONS 🟡 4
+           decide/  (base + v1)      scores → trade Intent (dir/entry/stop/target)   🟡 5
+           manage/  (base+fixed+trailing)  intent → Actions (arm/activate/exit)      🟡 6
+           pipeline.py               reads config, wires chosen versions, runs it     ✅ 7
+      ─► src/brokers/base.py + adapters   execution translates Actions → Broker      ⬜ 8
+
+ Consumers (read the Snapshot, never raw indicators):
+   chart/server.py  /api/replay/state → build_snapshot   |   tools/replay_monitor.py
+   src/backtest/    (future: replay loop + simulated Broker adapter)
+```
+
+The Snapshot (tier 3) is what the replay monitor AND the strategy consume; nothing
+downstream ever touches raw indicators. The swappable stages (score/decide/manage)
+are FOLDERS: `base.py` = the seam (interface + registry), version modules beside it
+(`v1.py`, `fixed.py`, …) self-register; the active one is chosen in config.
+
+Rules:
+- **readings = facts, score = opinions.** Keep them apart so you can rewrite how
+  you judge without changing what you measure (and vice-versa).
+- **Contracts are stable.** Adding a Snapshot field is additive and safe (old
+  consumers ignore it); renaming/removing is the only breaking change.
+- **Stages are swappable per stage.** score/decide/manage each register named
+  versions (like the JS indicator registry); the active one is chosen per stage in
+  `algo_config.yaml` under `strategy.use` (`scorer`/`decider`/`manager`). Swap a
+  stage = change one word; nothing else moves. A "strategy" = a named combo of
+  versions.
+- **Same stream everywhere.** live/replay/backtest all consume the identical
+  Snapshot stream, so they can't diverge. The replay monitor is just one consumer.
+- **Broker-agnostic** (see #4): the pipeline never touches broker-specific code.
+
+Adding an indicator to the pipeline — ASK these, in order, before coding:
+1. Which indicator? (its raw math)  2. What number(s) will it derive? (the
+reading/fact)  3. How do you want to read those numbers? (monitor/state form)
+4. (later) Does it feed scoring, and how much? Then: add a `readings/` module +
+a Snapshot field — the snapshot auto-combines it, no other wiring.
+
+### 8. Extending these conventions
 
 Add new numbered conventions here as the project's needs grow.
