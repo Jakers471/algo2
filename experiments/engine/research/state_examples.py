@@ -42,6 +42,34 @@ def pick(cands):
     return whip, cons
 
 
+def pick_impulse(cands):
+    """Among high-progress candidates, the cleanest UP and DOWN thrusts (max efficiency)."""
+    med = float(np.median([g.efficiency for _w, g in cands]))
+    high = [(w, g) for w, g in cands if g.efficiency >= med and g.range > 0]
+    up = max([c for c in high if c[1].direction == "bull"], key=lambda c: c[1].efficiency)
+    dn = max([c for c in high if c[1].direction == "bear"], key=lambda c: c[1].efficiency)
+    return up, dn
+
+
+def merge_impulses(states, gap=12, min_len=8):
+    n = len(states); raw = []; i = 0
+    while i < n:
+        if states[i] and states[i].startswith("IMPULSE"):
+            j = i
+            while j < n and states[j] == states[i]:
+                j += 1
+            raw.append([i, j - 1, states[i]]); i = j
+        else:
+            i += 1
+    m = []
+    for a, b, s in raw:
+        if m and m[-1][2] == s and a - m[-1][1] - 1 <= gap:
+            m[-1][1] = b
+        else:
+            m.append([a, b, s])
+    return [(a, b, s) for a, b, s in m if b - a + 1 >= min_len]
+
+
 def cell(ax, win, g, label):
     pw = max(8, len(win) * 0.13)
     viz.volume_profile(ax, win, g, pw)
@@ -89,6 +117,9 @@ def main():
                 seg = win1.iloc[i:j]
                 l2c.append((seg, grade(seg)))
             i = j
+        for a, b, _x in merge_impulses(st):       # also collect impulse runs
+            if b - a + 1 >= 12:
+                l2c.append((win1.iloc[a:b + 1], grade(win1.iloc[a:b + 1])))
 
     scales = [("L3  (8-session span, 5m)", pick(l3c)),
               ("L1  (one session, 5m)", pick(l1c)),
@@ -104,6 +135,21 @@ def main():
     out = os.path.join(ENGINE, "out", "state_examples.png")
     fig.savefig(out, dpi=110)
     print("wrote", out)
+
+    # --- IMPULSE UP vs IMPULSE DOWN ---
+    imp = [("L3  (8-session span, 5m)", pick_impulse(l3c)),
+           ("L1  (one session, 5m)", pick_impulse(l1c)),
+           ("L2  (1m segment)", pick_impulse(l2c))]
+    fig2, ax2 = plt.subplots(3, 2, figsize=(16, 12))
+    for r, (name, (up, dn)) in enumerate(imp):
+        cell(ax2[r, 0], up[0], up[1], f"{name}  -  IMPULSE UP")
+        cell(ax2[r, 1], dn[0], dn[1], f"{name}  -  IMPULSE DOWN")
+    fig2.suptitle("IMPULSE UP vs IMPULSE DOWN across scales - clean directional thrusts "
+                  "(high efficiency; volume spread through the move, no fat POC)", fontsize=12)
+    fig2.tight_layout(rect=[0, 0, 1, 0.97])
+    out2 = os.path.join(ENGINE, "out", "impulse_examples.png")
+    fig2.savefig(out2, dpi=110)
+    print("wrote", out2)
 
 
 if __name__ == "__main__":
