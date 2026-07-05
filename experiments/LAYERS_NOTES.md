@@ -30,6 +30,31 @@ That count is itself a feature (few legs = trending, many = choppy).
 
 `range_hop.py` (session H/L) is the solid foundation — do not touch it.
 
+## The two-things model (crystallized 2026-07-05)
+
+The whole system is only **two things**:
+
+1. **ANCHOR** — a high/low container. A *session* is an anchor; an *impulse* is an
+   anchor; a *consolidation* is an anchor.
+2. **GRADE** — the fixed metric set computed on an anchor: direction, efficiency
+   (net ÷ travel), acceptance (volume concentration), size, and the volume profile
+   (POC / VAH / VAL).
+
+"Layers" = **the same GRADE on smaller and smaller ANCHORS.** The loop:
+grade an anchor → its grade reveals the **impulses** inside → **each impulse becomes a
+new anchor** → grade those → recurse (zoom out = anchors merge).
+
+- Layer 1's anchor (the **session**) is **clock-given** — arbitrary but convenient.
+- Every deeper anchor is **structure-detected** (an **impulse**). That is the only real
+  difference between layers: clock-given at the top, structure-detected below.
+
+**No drift.** The fractal thesis *forbids* metric drift: if patterns reproduce at every
+scale, the SAME measurement must describe every scale, or you can't compare across them.
+Our current drift (each script computed a different subset — anatomy = full grade static;
+leg_states = 2 axes hiding the profile as `va_frac`; leg_profiles = the drawn profile per
+leg) is an accident of separate scripts, not a design choice. Fix = compute ONE full grade
+on EVERY anchor. Timeframe = input resolution only (finer anchor → finer TF); NOT a layer.
+
 ---
 
 ## Log
@@ -124,6 +149,58 @@ structure container): hang the volume profile / H/L / retracement off each LEG, 
 And the **volume-profile SHAPE** is the real impulse-vs-consolidation detector — thin/
 spread = impulse (price ran through), fat POC = consolidation (price accepted) — which
 also replaces the removed range boxes.
+
+**15 — Volume profile per leg (`experiments/layer2/leg_profiles.py`).** Hung a volume
+profile off each zigzag leg, graded by value-area concentration (`va_frac` = fraction of
+the leg's rows holding 70% of its volume). **Confirmed:** hanging the profile off a LEG
+(not the session) is the right anchor, and the profiles visibly show fat POCs on sideways
+stretches vs spread on fast moves. **But** a single binary RANGE-vs-impulse label is too
+crude — the strongest-bull's main up-leg got labeled "RANGE va 46%" because a *slow grind*
+builds acceptance even while trending.
+→ **The real lesson: concentration and direction are two DIFFERENT axes.** Cross them:
+
+|                | low acceptance (spread) | high acceptance (fat POC) |
+|----------------|-------------------------|---------------------------|
+| **net progress**   | clean **impulse**        | **grind / accumulation** (slow trend) |
+| **no progress**    | fast **whipsaw chop**    | **consolidation** (the real range)    |
+
+A 4-state regime map that reuses Layer 1's `net %` (progress) + the per-leg profile
+concentration (acceptance). Neither axis alone works; together they do. This is likely
+the core of the whole thing. Next: label each leg by both axes into one of the 4 states.
+
+**16 — 2-axis regime map (`experiments/layer2/leg_states.py`).** Rolling per-bar classifier:
+PROGRESS (efficiency = net ÷ travel) × ACCEPTANCE (1 − va_frac) → IMPULSE / GRIND /
+CONSOLIDATION / WHIPSAW (progress states tinted up/down). **Chop #2 came out beautiful** —
+clean IMPULSE UP (open rip) → chop → IMPULSE DN (drop) → consolidation. Jake (discretionary
+trader): *"beautiful up and down impulses… correct versions of what i constitute as an
+impulse."* Strong bull = mostly WHIPSAW/weak grind → Jake: *"the strongest bull is in fact
+a weaker climb."* Insight: **Layer 1 net% = magnitude ("ended way up"); Layer 2 2-axis =
+quality ("got there weakly")** — complementary, not contradictory. GRIND barely appears
+because a slow trend is choppy at a fine window — trend is a LARGER-scale pattern (fractal
+again). Volume profile IS used here, but only as one hidden number (`va_frac`), not drawn.
+
+**17 — "Make sense of the layers" (the coherence audit).** Jake: *"i cant make sense of
+these layers easily… we started at layer 1, talked about repeating in layer 2, same
+premise… we need new anchors if we scale (what do we define those anchors as)… found
+inconsistency with volume range profile… leg states captures something beautiful, regimes
+well detected, as a discretionary trader i agree… but the 5min doesnt have this regime
+detection, does it need it? can we get this same regime design on the 5min or is that just
+the 1min overlaid?… once impulse is detected, that becomes the core high/low for the volume
+profile to see smaller consolidations within the 5min base… session anatomy has all these
+numbers i love but i dont see this data captured for leg states… wheres the drift, do we
+want a drift, does there have to be one?… is volume profile even used in leg states?… do we
+want it mapped like leg profiles (POC/VAH/VAL)?… this isnt weakness, im gathering it all."*
+→ Response = **the two-things model** (see top): everything is an **ANCHOR** (a high/low
+container) + a **GRADE** (fixed metric set on it). Layers = same grade on smaller anchors;
+the loop grades an anchor, its impulses become new anchors, recurse. Layer 1 anchor =
+clock-given (session); deeper anchors = structure-detected (impulses) — Jake's "impulse
+becomes the core high/low for the profile" IS the recursion. **Drift is bad** — fractal
+forbids it; our drift is accidental (separate scripts, different subsets). Answers: volume
+profile IS in leg_states but hidden as `va_frac` (leg_profiles draws it — want both
+everywhere); 5m doesn't lack regime detection, the engine is timeframe-blind (5m = coarse,
+1m = fine, they nest); leg_states missing the anatomy numbers = the drift, unify to fix.
+Next: write the canonical `grade(anchor) → {metrics + profile}` + anchor-recursion spec as
+a design doc before any more views.
 
 ---
 
