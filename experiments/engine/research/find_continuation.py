@@ -93,7 +93,7 @@ def find_l1(d5, insts):
                  (st[i + 2], insts[i + 2]["start"] - p0, insts[i + 2]["end"] - p0)]
             score = net(d5.iloc[insts[i]["start"]:insts[i]["end"] + 1]) + net(d5.iloc[insts[i + 2]["start"]:insts[i + 2]["end"] + 1])
             cands.append((seg, b, score))
-    return best(cands)
+    return best(cands), len(cands)
 
 
 def find_l3(d5, insts, B=4):
@@ -111,7 +111,7 @@ def find_l3(d5, insts, B=4):
                  (st[i + 2], blocks[i + 2][0] - p0, blocks[i + 2][1] - p0)]
             score = net(d5.iloc[blocks[i][0]:blocks[i][1] + 1]) + net(d5.iloc[blocks[i + 2][0]:blocks[i + 2][1] + 1])
             cands.append((seg, b, score))
-    return best(cands)
+    return best(cands), len(cands)
 
 
 def find_l2(d5, d1, insts, sample):
@@ -135,7 +135,7 @@ def find_l2(d5, d1, insts, sample):
                      ("IMPULSE UP", ca - pa, cb - pa)]
                 score = net(win1.iloc[pa:pb + 1]) + net(win1.iloc[ca:cb + 1])
                 cands.append((seg, b, score))
-    return best(cands)
+    return best(cands), len(cands)
 
 
 def draw(ax, found, title):
@@ -167,10 +167,17 @@ def main():
     d1 = d1.loc[d1.index >= pd.Timestamp(args.start, tz="UTC")]
     insts = session_anchors(d5, 1_000_000)
 
+    l3f, l3n = find_l3(d5, insts)
+    l1f, l1n = find_l1(d5, insts)
+    l2f, l2n = find_l2(d5, d1, insts, args.l2_sample)
+    print(f"continuation setups found  ({d5.index[0].date()} -> {d5.index[-1].date()}, {len(insts)} sessions):")
+    print(f"  L3 (session blocks): {l3n}")
+    print(f"  L1 (sessions):       {l1n}")
+    print(f"  L2 (1m, last {args.l2_sample} sessions): {l2n}")
     fig, ax = plt.subplots(3, 1, figsize=(15, 13))
-    draw(ax[0], find_l3(d5, insts), "L3 (session blocks, 5m)")
-    draw(ax[1], find_l1(d5, insts), "L1 (sessions, 5m)")
-    draw(ax[2], find_l2(d5, d1, insts, args.l2_sample), "L2 (1m runs in a session)")
+    draw(ax[0], l3f, "L3 (session blocks, 5m)")
+    draw(ax[1], l1f, "L1 (sessions, 5m)")
+    draw(ax[2], l2f, "L2 (1m runs in a session)")
     fig.suptitle("Bullish continuation - UP leg -> CONSOLIDATION -> UP leg  (connected, per scale)", fontsize=13)
     fig.tight_layout(rect=[0, 0, 1, 0.97])
     out = os.path.join(ENGINE, "out", "continuation_examples.png")

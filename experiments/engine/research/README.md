@@ -105,6 +105,23 @@ is the entry zone; the same structure recurs fractally.
 python experiments/engine/research/find_continuation.py
 ```
 
+### `alignment.py` — do the scales line up? (nesting/confluence)
+Cross-scale directional alignment: when the higher scale is directional, does the lower
+scale point the same way inside it? Bar PNG (`out/alignment.png`) + plain-english.
+```bash
+python experiments/engine/research/alignment.py --start 2023-01-01 --sample 200
+```
+**Findings — alignment COLLAPSES with scale distance:**
+- **L1 -> L2 tightly coupled** (~86-88%): a directional session is built of same-direction
+  impulses. Adjacent scales nest cleanly.
+- **L3 -> L1 basically decoupled** (~19% aligned = the base rate): the L1 session mix is
+  ~the same whatever L3 is doing. A multi-session trend is built through mostly-flat
+  sessions (~68%) with occasional aligned pushes — it accumulates, it doesn't require each
+  session to trend.
+- **Full 3-scale confluence only ~18%** of directional moments -> rare and premium.
+So setups nest partially: L2-in-L1 yes, L1-in-L3 no. "Trade with the big trend" fails at
+the session level ~80% of the time; the value is that all-three-aligned is *rare*.
+
 ## Status
 
 Descriptive only — no entry/exit/stop/sizing rules yet. This is the **measure-what's-true**
