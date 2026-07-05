@@ -29,7 +29,7 @@ import numpy as np
 import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(os.path.dirname(HERE))   # experiments/layer2 -> repo root
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))  # experiments/archive/... -> repo
 sys.path.insert(0, REPO)
 from src.indicators.sessions import session_instances  # noqa: E402
 

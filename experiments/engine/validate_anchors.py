@@ -1,7 +1,7 @@
 """experiments/engine/validate_anchors.py — do impulse_anchors match leg_states?
 
 Detects structure impulses on chop #2 + strongest bull (1-min) and shades them, so we
-can eyeball against experiments/layer2/leg_states.png (should be the same green/red
+can eyeball against experiments/archive/layer2/leg_states.png (should be the same green/red
 regions). Also prints each impulse anchor's span + price move.
 
   python experiments/engine/validate_anchors.py
@@ -18,10 +18,9 @@ import pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
-sys.path.insert(0, os.path.join(REPO, "experiments", "layer2"))
 sys.path.insert(0, REPO)
 from anchors import impulse_anchors  # noqa: E402
-from session_legs import pick_sessions  # noqa: E402
+from examples import pick_sessions  # noqa: E402
 
 
 def plot(ax, win, title):
@@ -60,7 +59,7 @@ def main():
             print(f"   bars {a['start']:>3}-{a['end']:<3}  {a['state']:<11} move {move:+.0f} pts")
     fig.suptitle("Engine step 2 — structure-detected IMPULSE anchors (compare to leg_states.png)", fontsize=12)
     fig.tight_layout(rect=[0, 0, 1, 0.97])
-    out = os.path.join(HERE, "anchors_check.png")
+    out = os.path.join(HERE, "out", "anchors_check.png")
     fig.savefig(out, dpi=110)
     print("\nwrote", out)
 

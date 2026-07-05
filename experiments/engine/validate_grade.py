@@ -17,12 +17,11 @@ import pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
-sys.path.insert(0, os.path.join(REPO, "experiments", "layer1"))
-sys.path.insert(0, os.path.join(REPO, "experiments", "layer2"))
+sys.path.insert(0, os.path.join(REPO, "experiments", "archive", "layer1"))
 sys.path.insert(0, REPO)
 from grade import grade                                   # noqa: E402
-from session_anatomy import dims as adims, profile as aprofile  # noqa: E402
-from session_legs import pick_sessions                    # noqa: E402
+from session_anatomy import dims as adims, profile as aprofile  # noqa: E402 (archived reference)
+from examples import pick_sessions                    # noqa: E402
 
 # grade attr -> anatomy dims key (shared, must match exactly)
 SHARED = [("net", "net"), ("range", "rng"), ("strength", "net_pct"),

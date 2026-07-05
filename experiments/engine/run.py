@@ -19,11 +19,10 @@ import pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
-sys.path.insert(0, os.path.join(REPO, "experiments", "layer2"))
 sys.path.insert(0, REPO)
 from grade import grade  # noqa: E402
 from anchors import session_anchors, impulse_anchors, rolling_states  # noqa: E402
-from session_legs import pick_sessions  # noqa: E402
+from examples import pick_sessions  # noqa: E402
 import viz  # noqa: E402
 
 
@@ -90,8 +89,8 @@ def main():
     d5 = d5.loc[d5.index >= pd.Timestamp("2024-09-01", tz="UTC")]
     d1 = d1.loc[d1.index >= pd.Timestamp("2024-09-01", tz="UTC")]
     picks = pick_sessions(d5)
-    drilldown(d1, picks, os.path.join(HERE, "drilldown.png"))
-    multiscale(d5, os.path.join(HERE, "multiscale.png"))
+    drilldown(d1, picks, os.path.join(HERE, "out", "drilldown.png"))
+    multiscale(d5, os.path.join(HERE, "out", "multiscale.png"))
 
 
 if __name__ == "__main__":

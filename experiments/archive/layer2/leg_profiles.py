@@ -28,7 +28,7 @@ from matplotlib.patches import Rectangle
 import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(os.path.dirname(HERE))
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 sys.path.insert(0, HERE)
 sys.path.insert(0, REPO)
 from session_legs import zigzag, pick_sessions  # noqa: E402

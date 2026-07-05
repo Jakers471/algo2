@@ -80,7 +80,7 @@ def main():
     panel(axes[2], C, "(3) ZOOM into the box above  -  1m")
     fig.suptitle("Engine cascade - price within price within price: the SAME grade() at every zoom", fontsize=12)
     fig.tight_layout(rect=[0, 0, 1, 0.98])
-    out = os.path.join(HERE, "cascade.png")
+    out = os.path.join(HERE, "out", "cascade.png")
     fig.savefig(out, dpi=110)
     print("wrote", out)
 

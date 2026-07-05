@@ -14,11 +14,10 @@ import pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
-sys.path.insert(0, os.path.join(REPO, "experiments", "layer2"))
 sys.path.insert(0, REPO)
 from layers import descend, ascend, flatten  # noqa: E402
 from anchors import session_anchors  # noqa: E402
-from session_legs import pick_sessions  # noqa: E402
+from examples import pick_sessions  # noqa: E402
 
 
 def main():

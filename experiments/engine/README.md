@@ -31,8 +31,16 @@ Extend at the edges (new views, new anchor types). Never edit the core.
 | `anchors.py` | `session_anchors` (clock) · `impulse_anchors` (structure) · `meta_frame` | **frozen** |
 | `layers.py` | `descend` (zoom in) · `ascend` (zoom out) — the recursion | **frozen** |
 | `viz.py` | shared drawing (candles / boxes / profile / grade box / ribbon) | extend only |
+| `examples.py` | `pick_sessions` — demo/proof session picker (keeps the engine self-contained) | helper |
 | `run.py`, `cascade.py` | views (consumers) | free to add |
 | `validate_*.py` | the proofs | keep |
+| `out/` | generated PNGs (drilldown / multiscale / cascade / anchors_check) | output |
+
+Folder: the engine is self-contained under `experiments/engine/`; generated images go
+to `experiments/engine/out/`. The superseded exploration lives in `experiments/archive/`
+(`layer1/` session anatomy, `layer2/` legs/profiles/states, plus micro_zones, regime,
+break_sequence). `validate_grade.py` still imports the archived anatomy to prove the
+engine reproduces it.
 
 ## How a read happens (data flow)
 
