@@ -133,3 +133,16 @@ Heavier than the views (they touch 1m data + rolling grade), so they run on samp
 - Up impulse → any pause → **~60% continuation up**.
 - Impulses die into whipsaw (~83%); NY-open is the impulse hotspot; clean higher-scale
   trends have *fewer* sub-impulses.
+
+### `backtest_cont.py` — FIRST edge test (value-area breakout in a directional session)
+The trade rule: at a 1m CONSOLIDATION inside a session that is directional *so far* (net/range
+bias, no lookahead), enter on the VAH/VAL break in the session direction, stop = opposite VA
+edge (risk = VA height), target 2R, exit at session close. `out/backtest_cont.png`.
+```bash
+python experiments/engine/research/backtest_cont.py --sessions 300
+```
+**Result (300 sessions, NQ):** the rule = **37 trades, 54% win, +0.59R expectancy** (49% hit
++2R, 38% stopped). The session-bias filter roughly DOUBLES the edge vs an unfiltered control
+(+0.59R vs +0.35R) — trading breakouts *with* the session beats all breakouts, as the L1<->L2
+alignment predicted. CAVEATS: small sample (37), OPTIMISTIC fills (no slippage/commission),
+single parameter set. A strong hypothesis to harden (bigger sample + real costs), not a system.
