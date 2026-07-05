@@ -75,6 +75,15 @@ chop); when **L3 is impulsive there are FEWER sub-impulses** (clean trends run s
 with its volume profile. Both go nowhere; the **profile** separates them — consolidation =
 fat POC (acc ~0.7), whipsaw = spread/thin (acc ~0.2-0.3). Same signature at all 3 scales.
 
+### `state_grids.py` — 3 examples per condition, per scale (PNGs)
+One PNG per scale (`out/state_grid_L1.png`, `_L2`, `_L3`): the 6 states down the rows, 3
+real examples across, each with its volume profile. The full vocabulary as real price —
+reading down a column, efficiency drops (directional → flat) and the profile fattens/thins
+by acceptance (impulse = spread, grind/consolidation = fat POC).
+```bash
+python experiments/engine/research/state_grids.py
+```
+
 ### `sequence_patterns.py` — impulse -> pause -> ? (edge-shaped)
 The 3-step pattern: does a trend continue after a pause, split by clean (consolidation) vs
 noisy (whipsaw)? Bar PNG (`out/sequence_patterns.png`) + plain-english.
