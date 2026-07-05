@@ -33,6 +33,7 @@ sys.path.insert(0, REPO_ROOT)
 from src import config as algo_config  # noqa: E402
 from src.indicators.sessions import compute_sessions  # noqa: E402
 from src.indicators.volume_profile import compute_volume_profile  # noqa: E402
+from src.indicators.range_hop import compute_range_hop  # noqa: E402  (TEMP experiment)
 from src.indicators.volume import compute_volume  # noqa: E402
 from src.indicators.moving_average import compute_moving_averages  # noqa: E402
 from src.indicators.atr import compute_atr  # noqa: E402
@@ -194,6 +195,18 @@ def api_volume_profile():
     result = compute_volume_profile(
         _asof_slice(_load_df(symbol, tf, limit)), row_size=row_size, value_area_pct=va
     )
+    return jsonify(symbol=symbol, tf=tf, **result)
+
+
+# --- TEMP/EXPERIMENTAL: connected session high/low lines + bias regime --------
+# Per-session H/L (green up / red down) + bull/bear cloud from prior-session breaks.
+@app.route("/api/indicators/range_hop")
+def api_range_hop():
+    parsed = _request_params()
+    if len(parsed) == 2:
+        return parsed
+    symbol, tf, limit = parsed
+    result = compute_range_hop(_asof_slice(_load_df(symbol, tf, limit)))
     return jsonify(symbol=symbol, tf=tf, **result)
 
 
