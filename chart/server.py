@@ -35,6 +35,7 @@ from src.indicators.sessions import compute_sessions  # noqa: E402
 from src.indicators.volume_profile import compute_volume_profile  # noqa: E402
 from src.indicators.volume import compute_volume  # noqa: E402
 from src.indicators.moving_average import compute_moving_averages  # noqa: E402
+from src.indicators.atr import compute_atr  # noqa: E402
 from src.strategy import pipeline as strategy_pipeline  # noqa: E402
 
 # Order timeframes coarse-to-fine for display; only those with a parquet show up.
@@ -213,6 +214,16 @@ def api_moving_average():
         return parsed
     symbol, tf, limit = parsed
     result = compute_moving_averages(_asof_slice(_load_df(symbol, tf, limit)))
+    return jsonify(symbol=symbol, tf=tf, **result)
+
+
+@app.route("/api/indicators/atr")
+def api_atr():
+    parsed = _request_params()
+    if len(parsed) == 2:
+        return parsed
+    symbol, tf, limit = parsed
+    result = compute_atr(_asof_slice(_load_df(symbol, tf, limit)))
     return jsonify(symbol=symbol, tf=tf, **result)
 
 

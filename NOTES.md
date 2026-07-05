@@ -5,6 +5,68 @@ dated + timed and terse (≤50 lines). Split into `notes/` when this gets large.
 
 ---
 
+## 2026-07-05 15:xx — ATR wired in as an indicator (experimental)
+
+**Context:** explored NQ volatility via a run of throwaway artifacts (time-of-day
+volume/vol profile, ATR-over-year, consolidation-vs-impulse fingerprint, Dec 27 2024
+by session, points→ATR ruler, session-scoped ATR w/ high-ATR boxes). Jake then asked
+to wire ATR into the *actual chart* the same way the other indicators are — flagged
+as "most likely temp/experimental."
+
+**Built (standard continuous Wilder ATR, not the session-scoped experiment):** both
+halves per CLAUDE.md #5 — `src/indicators/atr.py` (pure; TR = max(H-L, |H-pc|,
+|L-pc|), Wilder EMA α=1/period, drop `period-1` warm-up) + renderer
+`atr.js`; `atr` config block (`period`/`color`/`height_pct`) + `atr_config()`;
+route `/api/indicators/atr`; README + CHANGELOG. Verified: module == manual Wilder
+(397.431 on NQ 1d), endpoint 200.
+
+**Key constraint / decision:** vendored Lightweight Charts is **v4.2.0 — no real
+sub-panes** (that's v5). So ATR can't be a true MACD/RSI pane; it's docked as an
+overlay line on its own auto-scaled price scale pinned to a lower band (the same
+trick `volume.js` uses), which means it **shares the lower band with volume**. Left
+it **off by default**. If we want a clean dedicated pane later, the move is upgrading
+LWC to v5 (`addPane`). ATR-derived overlays (Keltner/ATR-stop/SuperTrend) would be
+*separate* price-pane modules, not this one.
+
+---
+
+## 2026-07-05 — Sub-consolidation hunt: two experiments, both shelved
+
+**Goal:** find the *smaller* consolidations inside a session's volume profile
+(we already have session H/L, POC, VAH/VAL). Two temp experiments on the chart;
+neither kept. Both were self-contained drop-in indicators (math + renderer + route).
+
+**Experiment 1 — `volume_nodes` (detect sub-nodes from the histogram).** Two ways
+to pull HVN/LVN out of the profile: **A "peeling"** (reuse POC+value-area, peel the
+leftover — eager) vs **B "prominence"** (scipy peak/valley w/ prominence — strict).
+Then made 2D (time+price), then a **"budgeted"** version (1 base + ≤2 micro, scale
+floor → ≤3 boxes). *Jake: too noisy / "not what I'm looking for."* **Learning that
+stuck:** a volume profile *squashes time onto the price axis* — so any sub-node is a
+price BAND the full session wide; adding time back by "tightening" just fragments it.
+Detect-then-filter is inherently noisy. Deleted.
+
+**Insight kept (→ memory [[mtf-time-scaling]]):** a profile's quality = bars/window.
+Session = the natural **5m MTF base** (~60–108 bars); **60m can't bind to a session**
+(5–9 bars — its home is a week); window length ∝ timeframe (geometric ladder);
+nesting is HTF(60m/week) ⊃ MTF(5m/session=base) ⊃ LTF(1m/~1.5h).
+
+**Experiment 2 — `micro_zones` (VAH/VAL-anchored).** Base = the VAH/VAL channel
+(read, not detected); micros = tight-range runs (30–80 bars) *inside* the channel.
+v1 mixed 5m-channel + 1m-micros → rendering bug (1m box edges have no 5m bar →
+stretched full-width; fixed by snapping to 5m grid). Rebuilt **per-timeframe /
+self-contained** (profile + VAH/VAL + micros all on the viewed tf) per Jake's
+correction. Then *Jake shelved it.* **Why it doesn't work well:** the micro is a
+**price-action** thing (tight range) bolted onto a **volume** thing (value area) —
+no shared basis, so zones don't track volume structure; the "every bar inside
+VAH/VAL" rule is brittle to wicks; and going single-timeframe dropped the very
+LTF-in-MTF-in-HTF nesting that motivated it. **Archived** (not deleted) →
+`experiments/micro_zones/` (+ README to re-wire).
+
+**Where it stands:** sub-structure detection is still open. The clean idea hasn't
+landed yet; volume + time + scale haven't been unified into one basis.
+
+---
+
 ## 2026-07-04 — First reading added: time-based Volume (base-building begins)
 
 Jake's plan: build the FULL fact-base (all readings into the Snapshot) and watch

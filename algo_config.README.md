@@ -90,6 +90,34 @@ the chart draws it:
 
 ---
 
+## `atr` — Average True Range (volatility) — *experimental*
+
+```yaml
+atr:
+  period: 14
+  color: "#eb6834"
+  height_pct: 0.18
+```
+
+The smoothed *true range* per bar, in price points — a volatility magnitude, not a
+price level, so it draws as a line in a **lower band** of the price pane (like a
+MACD/RSI sub-panel would), toggled from the control panel (**off by default**).
+
+- **`period`** — Wilder smoothing lookback in bars (14 = reacts like a 14-bar
+  average range). **The only math knob** — read by `src.indicators.atr`; the chart
+  and (later) the backtester both compute ATR from it, so it never drifts. Smaller
+  = twitchier/more responsive; larger = smoother/slower.
+- **`color`** — the line's chart color (presentation, read by the renderer).
+- **`height_pct`** — how tall the lower band is, as a fraction of the pane. The band
+  is shared with the volume histogram (v4 has no true sub-panes); toggle **Volume**
+  off if you want the strip to itself.
+
+Where it's read: `period` in `src/indicators/atr.py`; `color`/`height_pct` in
+`chart/static/js/indicators/atr.js` (via `/api/config`). Served at
+`/api/indicators/atr`.
+
+---
+
 ## `moving_averages` — the MA lines
 
 ```yaml

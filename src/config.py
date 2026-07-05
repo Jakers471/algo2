@@ -93,6 +93,22 @@ def moving_averages_config() -> dict:
     }
 
 
+def atr_config() -> dict:
+    """Resolved ATR (Average True Range) config: the smoothing `period`, the line
+    `color`, and `height_pct` (how tall the lower band it docks in is).
+
+    `period` is the only math knob (read by src.indicators.atr); color + height are
+    presentation, read by the renderer, and live here so ATR is config-driven like
+    every other indicator.
+    """
+    cfg = load().get("atr", {})
+    return {
+        "period": int(cfg.get("period", 14)),
+        "color": cfg.get("color", "#eb6834"),
+        "height_pct": float(cfg.get("height_pct", 0.18)),
+    }
+
+
 def strategy_config() -> dict:
     """Pipeline config: which VERSION of each stage runs (`use` slots) + `readings`
     knobs for deriving facts. Stage knobs (weights/thresholds) get added later."""

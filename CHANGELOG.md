@@ -6,6 +6,15 @@ All notable changes to this project. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **ATR indicator (experimental)** — Average True Range wired in as a normal
+  indicator (both halves, CLAUDE.md #5). Math: `src/indicators/atr.py` (Wilder
+  smoothing of true range, per-bar values in points; drops `period-1` warm-up bars
+  like the MAs) served at `/api/indicators/atr`. Renderer:
+  `chart/static/js/indicators/atr.js` — a line docked in a lower band of the price
+  pane (v4 has no true sub-panes, so it shares the band with volume, same overlay
+  trick as `volume.js`), toggled from the panel, **off by default**. Config: new
+  `atr` block (`period`/`color`/`height_pct`) in `algo_config.yaml`, resolved by
+  `src.config.atr_config()`, documented in `algo_config.README.md`.
 - **Volume reading in the Snapshot** — `src/strategy/readings/volume.py` derives
   four facts from the time-based volume indicator at the current bar: `bar`
   (this bar's volume), `rvol` (relative volume vs the last 20 bars — a spike reads

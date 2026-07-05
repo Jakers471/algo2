@@ -35,6 +35,17 @@ volume:
   down_color: "rgba(230, 103, 103, 0.5)" # bar color when close < open
   height_pct: 0.20                        # bottom fraction of the pane it fills
 
+# ---- ATR (Average True Range) ---------------------------------------------
+# Volatility indicator: the smoothed true range per bar, in price points. Drawn
+# as a line in a lower band of the price pane (like MACD/RSI would be), toggled
+# from the control panel. `period` is the Wilder smoothing lookback (the math
+# knob); `color` + `height_pct` are presentation (band color + how tall the band
+# is, as a fraction of the pane). Experimental.
+atr:
+  period: 14                  # Wilder smoothing lookback in bars
+  color: "#eb6834"            # line color (frontend presentation)
+  height_pct: 0.18            # lower-band height as a fraction of the pane
+
 # ---- Moving Averages ------------------------------------------------------
 # Each line entry draws one moving average: `type` is sma (simple) or ema
 # (exponential — weights recent bars more, hugs price closer); `period` is the
