@@ -13,7 +13,7 @@ robust bar access, and diagnostic logging. Short debug range — expand once it 
 from AlgorithmImports import *
 import numpy as np
 
-from grade_lib import (grade, read_consolidation, decide,
+from grade_lib import (grade, state_of, find_consolidation, decide,
                        MIN_BARS, STATE_WINDOW, MIN_LEN)
 
 CHI_WINDOWS = [("Asia", 18 * 60, 3 * 60), ("London", 3 * 60, 8 * 60), ("NY", 8 * 60, 17 * 60)]
@@ -47,7 +47,7 @@ class VaBreakout(QCAlgorithm):
         cons.data_consolidated += self._on_5m
         self.subscription_manager.add_consolidator(self._sym, cons)
 
-        self._b1, self._b5 = [], []
+        self._b1, self._st1, self._b5 = [], [], []   # 1m bars, 1m states (aligned), 5m session bars
         self._session = None
         self._traded = set()
         self._pos = None
@@ -69,8 +69,15 @@ class VaBreakout(QCAlgorithm):
             self._diag["got_bar"] = True
             self.log(f"{self.time} data flowing on {bar.symbol}")
         self._b1.append([bar.open, bar.high, bar.low, bar.close, bar.volume])
+        # compute THIS bar's state once (grade of the trailing window) and keep it —
+        # so find_consolidation never re-grades the whole window (the perf fix).
+        if len(self._b1) >= STATE_WINDOW + 1:     # rolling_states grades bars[i-25:i+1] = 26 bars
+            w = np.array(self._b1[-(STATE_WINDOW + 1):], float)
+            self._st1.append(state_of(w[:, 0], w[:, 1], w[:, 2], w[:, 3], w[:, 4]))
+        else:
+            self._st1.append(None)
         if len(self._b1) > 400:
-            self._b1 = self._b1[-400:]
+            self._b1 = self._b1[-400:]; self._st1 = self._st1[-400:]
         if self._pos is not None:
             self._check_exit(bar)
 
@@ -106,7 +113,7 @@ class VaBreakout(QCAlgorithm):
         s5 = np.array(self._b5, float)
         strength = grade(s5[:, 0], s5[:, 1], s5[:, 2], s5[:, 3], s5[:, 4]).strength
         b1 = np.array(self._b1, float)
-        cons = read_consolidation(b1[:, 0], b1[:, 1], b1[:, 2], b1[:, 3], b1[:, 4])
+        cons = find_consolidation(self._st1, b1[:, 0], b1[:, 1], b1[:, 2], b1[:, 3], b1[:, 4])
         intent = decide(strength, cons, bar.close)
         if intent is None:
             return

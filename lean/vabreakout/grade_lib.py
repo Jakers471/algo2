@@ -122,25 +122,36 @@ def _cons_runs(states, min_len):
     return out
 
 
-def read_consolidation(o, h, l, c, v):
-    """Recent 1m OHLCV arrays -> the current CONSOLIDATION base {vah,val,poc,len,ago} or None."""
-    n = len(c)
+def state_of(o, h, l, c, v):
+    """State of ONE trailing window (the last STATE_WINDOW bars). main.py calls this once
+    per new 1m bar and keeps the states — so we never re-grade the whole window each 5m bar
+    (the perf fix: O(1)/bar instead of O(window)/bar)."""
+    return grade(o, h, l, c, v).state
+
+
+def find_consolidation(states, o, h, l, c, v):
+    """PRECOMPUTED per-1m-bar states + aligned OHLCV -> the current CONSOLIDATION base
+    {vah,val,poc,len,ago} or None. No re-grading of the rolling window — that already
+    happened once per bar via state_of()."""
+    n = len(states)
     if n < STATE_WINDOW + MIN_LEN:
         return None
     lo = max(0, n - DET_WINDOW)
-    o, h, l, c, v = o[lo:], h[lo:], l[lo:], c[lo:], v[lo:]
-    states = _rolling_states(o, h, l, c, v, STATE_WINDOW)
-    runs = _cons_runs(states, MIN_LEN)
+    st = list(states[lo:])
+    for i in range(min(STATE_WINDOW, len(st))):   # replicate the tail-window warm-up (None)
+        st[i] = None
+    runs = _cons_runs(st, MIN_LEN)
     if not runs:
         return None
     a, b = runs[-1]
-    ended_ago = len(c) - 1 - b
+    ended_ago = (n - lo) - 1 - b
     if ended_ago > MAX_AGE:
         return None
-    g = grade(o[a:b + 1], h[a:b + 1], l[a:b + 1], c[a:b + 1], v[a:b + 1])
+    A, B = lo + a, lo + b                      # absolute indices into the bar arrays
+    g = grade(o[A:B + 1], h[A:B + 1], l[A:B + 1], c[A:B + 1], v[A:B + 1])
     if g.vah <= g.val:
         return None
-    return {"vah": g.vah, "val": g.val, "poc": g.poc, "len": b - a + 1, "ended_ago": ended_ago}
+    return {"vah": g.vah, "val": g.val, "poc": g.poc, "len": B - A + 1, "ended_ago": ended_ago}
 
 
 def decide(strength, cons, price):
