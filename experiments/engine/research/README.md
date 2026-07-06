@@ -200,3 +200,22 @@ python experiments/engine/research/backtest_manage.py
 - **Trailing runner = a WASH** (+243R both, identical curve). The MFE tail is real but "half@2R +
   trail 1R" is too loose to harvest it: trades that tag 2R then reverse give back on the trailed
   half exactly what the real runners gain. Capturing the tail needs a tighter trail (open follow-up).
+
+### `backtest_costs.py` — net-of-costs equity (from cache, PNG)
+Subtracts realistic NQ costs per trade, in R. NQ E-mini = $20/pt, tick 0.25pt=$5. Cost model
+(round turn): commission ($, default 4) + slippage (ticks/side, default 1) -> a FIXED points
+cost, expressed as R = cost_pts / (that trade's risk in pts), so tight-VA trades pay more R.
+Compares 1.0R vs 0.8R stop, gross vs net. `out/backtest_costs.png`.
+```bash
+python experiments/engine/research/backtest_costs.py --commission_rt 4 --slip_ticks 1
+```
+**Findings ($4 comm + 1 tick/side = 0.70pt/$14 RT):** the edge SURVIVES costs. Avg risk (VA
+width) is 12.3 pts (~$246), so $14 RT is only ~6% of risk -> costs shave ~0.10-0.12R/trade.
+**0.8R stop stays best net: +0.44R exp (vs 1.0R's +0.36), +236R over 5yr, -8R DD.** Note VA
+width ranges 1.2 -> 79.5 pts; on tiny bases the fixed cost is ~0.5R -> a MIN-VA filter (skip
+consolidations < ~4-5 pts) should lift net further (open follow-up).
+
+### Net-of-costs bottom line (strategy as it stands)
+VA breakout, 0.8R stop, 2R target: **~+0.44R/trade net, ~106 trades/yr, +236R / 5yr, -8R maxDD**,
+after $14/RT costs. Balanced long/short (51%/52%), durable across COVID / 2022 bear / 2024 bull.
+Still research (experiments/), not yet in src/strategy/. Open: min-VA filter, tighter trail.
