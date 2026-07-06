@@ -261,8 +261,16 @@ def _replay_pipeline():
         result = strategy_pipeline.run(df, st["symbol"], st["tf"])
         if result.get("snapshot") is None:
             result = None
+            if os.environ.get("REPLAY_DEBUG"):
+                print(f"[replay] snapshot None: {len(df)} bars <= asof {st['asof']} "
+                      f"({st['symbol']} {st['tf']}) — cursor too early / no history yet", flush=True)
     except Exception:
         result = None
+        # Never silently blank the monitor: surface WHY the pipeline failed to the
+        # server console (this is server-side Python, not the browser's F12 console).
+        import traceback
+        print(f"[replay] pipeline error at asof {st['asof']} ({st['symbol']} {st['tf']}):", flush=True)
+        traceback.print_exc()
     _readout_cache.clear()  # keep only the latest asof
     _readout_cache[key] = result
     return result
