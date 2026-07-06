@@ -20,6 +20,7 @@ using QuantConnect;
 using QuantConnect.Data;
 using QuantConnect.Data.Consolidators;
 using QuantConnect.Data.Market;
+using QuantConnect.Orders;             // OrderTicket / OrderEvent / StopMarketOrder
 using QuantConnect.Securities;         // Futures.Indices.NASDAQ100EMini lives here
 using QuantConnect.Securities.Future;  // the Future type
 
@@ -41,6 +42,8 @@ namespace QuantConnect.Algorithm.CSharp
         private HashSet<(double, double)> _traded = new();
         private Vab.Intent _pos;
         private bool _inPos = false;
+        private OrderTicket _entryTicket;   // resting stop-order for the pending entry (fill AT the level)
+        private Vab.Intent _arm;            // the setup behind the resting order
         private readonly List<Vab.TradeRec> _trades = new();
         private bool _gotBar = false;
         private int _entries = 0;
@@ -69,7 +72,10 @@ namespace QuantConnect.Algorithm.CSharp
         public override void OnData(Slice slice)
         {
             foreach (var _ in slice.SymbolChangedEvents.Values)
+            {
+                CancelEntry();
                 if (_inPos) { Liquidate(); Record(_pos.Entry, "rollover"); _inPos = false; }
+            }
 
             // Bar for our future. Guard the null Mapped (early bars) — C#'s TryGetValue(null) THROWS,
             // where Python's dict.get(None) just returned None. This was the runtime crash.
@@ -124,6 +130,7 @@ namespace QuantConnect.Algorithm.CSharp
             var sess = SessionOf(Time);
             if (sess != _session || gap)
             {
+                CancelEntry();                                    // drop any resting entry at the boundary
                 if (_inPos) { Liquidate(_future.Mapped); Record((double)bar.Close, "session_close"); _inPos = false; }
                 _session = sess;
                 _o5.Clear(); _h5.Clear(); _l5.Clear(); _c5.Clear(); _v5.Clear();
@@ -149,19 +156,38 @@ namespace QuantConnect.Algorithm.CSharp
             var cons = Vab.FindConsolidation(_st1.GetRange(lo, cnt),
                 _so.AsSpan(0, cnt), _sh.AsSpan(0, cnt), _sl.AsSpan(0, cnt), _sc.AsSpan(0, cnt), _sv.AsSpan(0, cnt));
 
-            var intent = Vab.Decide(strength, cons, (double)bar.Close);
-            if (!intent.Valid) return;
-            var sig = (Math.Round(intent.Entry, 1), Math.Round(intent.Stop, 1));
-            if (_traded.Contains(sig)) return;
-            _traded.Add(sig);
-            Enter(intent);
+            // ARM a resting stop at the breakout level, so we fill AT the level when price crosses it
+            // (not chasing it with a market order after the 5m close). arm = directional + a base +
+            // price hasn't broken yet.
+            var arm = Vab.DecideArm(strength, cons, (double)bar.Close);
+            if (!arm.Valid) { CancelEntry(); return; }
+            var sig = (Math.Round(arm.Entry, 1), Math.Round(arm.Stop, 1));
+            if (_traded.Contains(sig)) { CancelEntry(); return; }   // already took this base
+            if (_future.Mapped == null) return;
+            if (_entryTicket == null || _arm.Direction != arm.Direction || Math.Abs(_arm.Entry - arm.Entry) > 1e-9)
+            {
+                CancelEntry();
+                _arm = arm;
+                _entryTicket = StopMarketOrder(_future.Mapped, arm.Direction == "long" ? 1 : -1, (decimal)arm.Entry);
+            }
         }
 
-        private void Enter(Vab.Intent intent)
+        private void CancelEntry()
         {
-            if (_future.Mapped == null) return;                 // no tradable contract yet
-            MarketOrder(_future.Mapped, intent.Direction == "long" ? 1 : -1);
-            _pos = intent; _inPos = true; _entries++;
+            if (_entryTicket != null) { _entryTicket.Cancel(); _entryTicket = null; }
+        }
+
+        public override void OnOrderEvent(OrderEvent orderEvent)
+        {
+            if (orderEvent.Status != OrderStatus.Filled) return;
+            if (_entryTicket != null && orderEvent.OrderId == _entryTicket.OrderId)   // the resting stop triggered
+            {
+                _pos = _arm;
+                _pos.Entry = (double)orderEvent.FillPrice;       // actual fill (~the level) for honest R
+                _inPos = true; _entries++;
+                _traded.Add((Math.Round(_arm.Entry, 1), Math.Round(_arm.Stop, 1)));
+                _entryTicket = null;
+            }
         }
 
         // ---- checkpointing (throttled: logging every bar trips QC's rate limit) ----
@@ -314,6 +340,20 @@ namespace QuantConnect.Algorithm.CSharp
             if (strength >= BiasStr && price > cons.Vah)
                 return new Intent { Valid = true, Direction = "long", Entry = cons.Vah, Stop = cons.Val, Target = cons.Vah + TargetR * risk };
             if (strength <= -BiasStr && price < cons.Val)
+                return new Intent { Valid = true, Direction = "short", Entry = cons.Val, Stop = cons.Vah, Target = cons.Val - TargetR * risk };
+            return default;
+        }
+
+        // Arm version for resting stop-orders: fire when directional + a base exists AND price HASN'T
+        // broken yet (price < VAH for long / > VAL for short), so a stop parked at the level fills ON
+        // the break rather than chasing it after the 5m close.
+        public static Intent DecideArm(double strength, Cons cons, double price)
+        {
+            if (!cons.Valid || cons.Vah <= cons.Val) return default;
+            double risk = cons.Vah - cons.Val;
+            if (strength >= BiasStr && price < cons.Vah)
+                return new Intent { Valid = true, Direction = "long", Entry = cons.Vah, Stop = cons.Val, Target = cons.Vah + TargetR * risk };
+            if (strength <= -BiasStr && price > cons.Val)
                 return new Intent { Valid = true, Direction = "short", Entry = cons.Val, Stop = cons.Vah, Target = cons.Val - TargetR * risk };
             return default;
         }
