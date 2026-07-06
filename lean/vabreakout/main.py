@@ -31,7 +31,7 @@ def _session_of(dt):
 class VaBreakout(QCAlgorithm):
 
     def initialize(self):
-        self.set_start_date(2024, 12, 1)          # short debug range; expand once verified
+        self.set_start_date(2022, 1, 1)           # 3-year validation sample (~8 min on cloud)
         self.set_end_date(2025, 1, 1)
         self.set_cash(100_000)
         self.set_time_zone(TimeZones.CHICAGO)     # so self.time matches the session windows
