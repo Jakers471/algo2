@@ -3,7 +3,8 @@
  *
  * Byte-for-byte port of lean/vabreakout (Python) / src/strategy: L1 = 5m session bias
  * (Grade().Strength), L2 = a 1m CONSOLIDATION; enter on the break of its value area in the
- * session's direction, stop = opposite edge, target 2R. Entries decided on 5m; exits on 1m.
+ * session's direction, stop = opposite edge, target 2R. Entries decided on 5m; exits are REAL
+ * stop/limit bracket orders (placed once the entry fills) so the entry's own bar can't stop us out.
  *
  * PERFORMANCE: the per-bar hot path (Grade) is written TIGHT — no LINQ, no per-bar allocations.
  * It slices the buffers with zero-copy Span<double> (CollectionsMarshal.AsSpan) and uses a
@@ -38,53 +39,77 @@ namespace QuantConnect.Algorithm.CSharp
         private readonly double[] _so = new double[512], _sh = new double[512], _sl = new double[512],
                                   _sc = new double[512], _sv = new double[512];
         private string _session = null;
+        private bool _rolled = false;   // set on a contract roll (Raw data jumps) -> reset the session
         private DateTime _lastBar = DateTime.MinValue;   // to detect data gaps that break a session
         private HashSet<(double, double)> _traded = new();
         private Vab.Intent _pos;
         private bool _inPos = false;
         private OrderTicket _entryTicket;   // resting stop-order for the pending entry (fill AT the level)
+        private OrderTicket _stopTicket, _tgtTicket;   // REAL bracket exit legs (manual OCO), placed once entry fills
         private Vab.Intent _arm;            // the setup behind the resting order
         private readonly List<Vab.TradeRec> _trades = new();
         private bool _gotBar = false;
         private int _entries = 0;
+        // DIAGNOSTIC (direction bug): where do longs vanish? Count the session-bias sign at every
+        // decision bar, the stop-orders actually placed, and the fills — each split long/short.
+        private int _biasBull = 0, _biasBear = 0, _biasFlat = 0;
+        private int _placeLong = 0, _placeShort = 0, _fillLong = 0, _fillShort = 0;
 
         public override void Initialize()
         {
-            SetStartDate(2015, 1, 1);        // 10 years (match the local overnight run)
-            SetEndDate(2025, 1, 1);
+            // Honest 11yr baseline: Second-resolution fills, 2015-2026 (2R target, no BE — best config).
+            SetStartDate(2015, 1, 1);
+            SetEndDate(2026, 7, 1);
             SetCash(100000);
             SetTimeZone(TimeZones.Chicago);
 
-            _future = AddFuture(Futures.Indices.NASDAQ100EMini, Resolution.Minute,
-                dataNormalizationMode: DataNormalizationMode.BackwardsRatio,
+            // RAW (not BackwardsRatio): the strategy computes order prices (Vah/Val) from this data and
+            // submits them on _future.Mapped (the raw contract). BackwardsRatio-adjusted prices are on a
+            // DIFFERENT scale than the raw contract (the adjustment grows back in time), so buy-stops
+            // landed far above the raw market (never filled) and sell-stops triggered instantly at garbage
+            // -> 4/1041 long fills, ~0% win, and R(adjusted) disagreeing with P&L(raw). Raw aligns the two.
+            // Within a session (no roll) Raw and BackwardsRatio have identical shape, so signals are
+            // unchanged; rolls are handled by breaking the session on SymbolChanged (see OnData).
+            // SECOND resolution: the resting entry + bracket orders fill on 1-second bars (honest intrabar
+            // sequencing), removing the 1-minute over-stopping that made minute fills pessimistic. The
+            // strategy's 1m/5m buffers are rebuilt by consolidators below — OnData no longer builds them.
+            _future = AddFuture(Futures.Indices.NASDAQ100EMini, Resolution.Second,
+                dataNormalizationMode: DataNormalizationMode.Raw,
                 dataMappingMode: DataMappingMode.LastTradingDay, contractDepthOffset: 0);
             _future.SetFilter(0, 182);
             _sym = _future.Symbol;
 
-            var cons = new TradeBarConsolidator(TimeSpan.FromMinutes(5));
-            cons.DataConsolidated += On5m;
-            SubscriptionManager.AddConsolidator(_sym, cons);
+            // 1m consolidator registered BEFORE the 5m one so On1m updates the buffers before On5m reads them.
+            var c1 = new TradeBarConsolidator(TimeSpan.FromMinutes(1));
+            c1.DataConsolidated += On1m;
+            SubscriptionManager.AddConsolidator(_sym, c1);
+            var c5 = new TradeBarConsolidator(TimeSpan.FromMinutes(5));
+            c5.DataConsolidated += On5m;
+            SubscriptionManager.AddConsolidator(_sym, c5);
 
             SetWarmUp(TimeSpan.FromDays(3));
         }
 
-        // ---- 1m stream: buffer + intrabar exit ----
+        // ---- second stream: only rollover handling; buffers + fills happen elsewhere ----
+        // At Second resolution OnData fires every second. The 1m/5m strategy buffers are built by the
+        // consolidators (On1m/On5m); the resting entry + bracket orders fill automatically on the 1s data
+        // (honest intrabar sequencing). So OnData just watches for contract rolls.
         public override void OnData(Slice slice)
         {
             foreach (var _ in slice.SymbolChangedEvents.Values)
             {
                 CancelEntry();
-                if (_inPos) { Liquidate(); Record(_pos.Entry, "rollover"); _inPos = false; }
+                if (_inPos) FlattenPosition(_pos.Entry, "rollover");
+                // With Raw data the price jumps at a roll. Clear the 1m buffers so the L2 consolidation
+                // window can't span the discontinuity, and flag the 5m stream to reset its session (L1).
+                _o1.Clear(); _h1.Clear(); _l1.Clear(); _c1.Clear(); _v1.Clear(); _st1.Clear();
+                _rolled = true;
             }
+        }
 
-            // Bar for our future. Guard the null Mapped (early bars) — C#'s TryGetValue(null) THROWS,
-            // where Python's dict.get(None) just returned None. This was the runtime crash.
-            if (!slice.Bars.TryGetValue(_sym, out var bar))
-            {
-                if (_future.Mapped == null || !slice.Bars.TryGetValue(_future.Mapped, out bar))
-                    return;
-            }
-
+        // ---- 1m stream (consolidated from 1s): buffer + per-bar state grade ----
+        private void On1m(object sender, TradeBar bar)
+        {
             if (!_gotBar) { _gotBar = true; Log($"{Time} data flowing on {bar.Symbol}"); }
 
             _o1.Add((double)bar.Open); _h1.Add((double)bar.High); _l1.Add((double)bar.Low);
@@ -102,22 +127,9 @@ namespace QuantConnect.Algorithm.CSharp
             else _st1.Add(null);
 
             if (_c1.Count > 800) TrimHead();
-
-            if (_inPos) CheckExit(bar);
-        }
-
-        private void CheckExit(TradeBar bar)
-        {
-            bool lng = _pos.Direction == "long";
-            double hi = (double)bar.High, lo = (double)bar.Low;
-            bool hitStop = lng ? lo <= _pos.Stop : hi >= _pos.Stop;
-            bool hitTgt = lng ? hi >= _pos.Target : lo <= _pos.Target;
-            if (hitStop || hitTgt)
-            {
-                Liquidate(_future.Mapped);
-                Record(hitStop ? _pos.Stop : _pos.Target, hitStop ? "stop" : "target");
-                _inPos = false;
-            }
+            // Exits are REAL bracket orders (placed in OnOrderEvent once the entry fills) — no manual OHLC
+            // check. At Second resolution the stop/target legs only trigger on subsequent 1s bars, so the
+            // entry's own bar can't stop it out and a 1m bar can't over-count a stop-out.
         }
 
         // ---- 5m stream: session bias + decide + entry ----
@@ -128,11 +140,12 @@ namespace QuantConnect.Algorithm.CSharp
             bool gap = _lastBar != DateTime.MinValue && (Time - _lastBar).TotalMinutes > 30;
             _lastBar = Time;
             var sess = SessionOf(Time);
-            if (sess != _session || gap)
+            if (sess != _session || gap || _rolled)
             {
                 CancelEntry();                                    // drop any resting entry at the boundary
-                if (_inPos) { Liquidate(_future.Mapped); Record((double)bar.Close, "session_close"); _inPos = false; }
+                if (_inPos) FlattenPosition((double)bar.Close, "session_close");
                 _session = sess;
+                _rolled = false;
                 _o5.Clear(); _h5.Clear(); _l5.Clear(); _c5.Clear(); _v5.Clear();
                 _traded = new HashSet<(double, double)>();
             }
@@ -149,6 +162,9 @@ namespace QuantConnect.Algorithm.CSharp
             // (per-5m, negligible) rather than the fixed scratch. Matches the Python (dynamic lists).
             double strength = Vab.Grade(_o5.ToArray(), _h5.ToArray(), _l5.ToArray(),
                                         _c5.ToArray(), _v5.ToArray()).Strength;
+            if (strength >= Vab.BiasStr) _biasBull++;          // DIAGNOSTIC: session-bias sign this bar
+            else if (strength <= -Vab.BiasStr) _biasBear++;
+            else _biasFlat++;
 
             int m = _c1.Count, lo = Math.Max(0, m - Vab.DetWindow), cnt = m - lo;                      // last 120 (L2)
             _o1.CopyTo(lo, _so, 0, cnt); _h1.CopyTo(lo, _sh, 0, cnt); _l1.CopyTo(lo, _sl, 0, cnt);
@@ -168,6 +184,7 @@ namespace QuantConnect.Algorithm.CSharp
             {
                 CancelEntry();
                 _arm = arm;
+                if (arm.Direction == "long") _placeLong++; else _placeShort++;   // DIAGNOSTIC
                 _entryTicket = StopMarketOrder(_future.Mapped, arm.Direction == "long" ? 1 : -1, (decimal)arm.Entry);
             }
         }
@@ -177,16 +194,58 @@ namespace QuantConnect.Algorithm.CSharp
             if (_entryTicket != null) { _entryTicket.Cancel(); _entryTicket = null; }
         }
 
+        private void CancelBracket()
+        {
+            if (_stopTicket != null) { _stopTicket.Cancel(); _stopTicket = null; }
+            if (_tgtTicket != null) { _tgtTicket.Cancel(); _tgtTicket = null; }
+        }
+
+        // flatten NOW (rollover / session boundary): drop the bracket, market-out, record once.
+        private void FlattenPosition(double exitPx, string reason)
+        {
+            CancelBracket();
+            Liquidate(_future.Mapped);
+            Record(exitPx, reason);
+            _inPos = false;
+        }
+
         public override void OnOrderEvent(OrderEvent orderEvent)
         {
             if (orderEvent.Status != OrderStatus.Filled) return;
-            if (_entryTicket != null && orderEvent.OrderId == _entryTicket.OrderId)   // the resting stop triggered
+            int id = orderEvent.OrderId;
+
+            // (1) entry stop filled -> record the position + place the REAL protective bracket. Child
+            //     orders placed here are evaluated from the NEXT bar on, so the entry's own bar can't
+            //     stop us out (the bug that made every QC trade exit at -1R -> 0% win).
+            if (_entryTicket != null && id == _entryTicket.OrderId)
             {
                 _pos = _arm;
                 _pos.Entry = (double)orderEvent.FillPrice;       // actual fill (~the level) for honest R
                 _inPos = true; _entries++;
+                if (_arm.Direction == "long") _fillLong++; else _fillShort++;   // DIAGNOSTIC
                 _traded.Add((Math.Round(_arm.Entry, 1), Math.Round(_arm.Stop, 1)));
                 _entryTicket = null;
+
+                int exitQty = _arm.Direction == "long" ? -1 : 1;   // close = opposite side of the entry
+                // tag as a NAMED arg: LEAN's 4th positional param is `bool asynchronous`, not the tag.
+                _stopTicket = StopMarketOrder(_future.Mapped, exitQty, (decimal)_pos.Stop, tag: "stop");
+                _tgtTicket = LimitOrder(_future.Mapped, exitQty, (decimal)_pos.Target, tag: "target");
+                return;
+            }
+
+            // (2) a bracket leg filled -> record at the honest fill price, cancel the sibling (manual OCO).
+            if (_stopTicket != null && id == _stopTicket.OrderId)
+            {
+                _stopTicket = null;
+                if (_tgtTicket != null) { _tgtTicket.Cancel(); _tgtTicket = null; }
+                Record((double)orderEvent.FillPrice, "stop"); _inPos = false;
+                return;
+            }
+            if (_tgtTicket != null && id == _tgtTicket.OrderId)
+            {
+                _tgtTicket = null;
+                if (_stopTicket != null) { _stopTicket.Cancel(); _stopTicket = null; }
+                Record((double)orderEvent.FillPrice, "target"); _inPos = false;
             }
         }
 
@@ -218,6 +277,9 @@ namespace QuantConnect.Algorithm.CSharp
             foreach (var t in _trades) { if (t.R > 0) wins++; total += t.R; }
             Log($"DONE — {n} trades, {(n > 0 ? 100 * wins / n : 0)}% win, {Math.Round(total, 2)}R total " +
                 $"(entries {_entries}, gotBar {_gotBar})");
+            // DIAGNOSTIC: trace where longs vanish. bias(bull/bear/flat) -> placed(L/S) -> filled(L/S).
+            Log($"DIAG bias  bull={_biasBull} bear={_biasBear} flat={_biasFlat}");
+            Log($"DIAG place long={_placeLong} short={_placeShort}   |   fill long={_fillLong} short={_fillShort}");
         }
 
         // ---- helpers ----

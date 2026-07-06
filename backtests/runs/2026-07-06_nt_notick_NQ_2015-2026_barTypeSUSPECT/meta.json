@@ -1,0 +1,17 @@
+{
+  "run_id": "2026-07-06_nt_notick_NQ_2015-2026_barTypeSUSPECT",
+  "created_utc": "2026-07-06T11:47:24Z",
+  "platform": "ninjatrader",
+  "strategy": "VABreakout",
+  "instrument": "NQ",
+  "bar_type": "SUSPECT (likely Tick/150, not Minute/1)",
+  "tick_replay": false,
+  "fill_resolution": "minute",
+  "commission_per_rt": 5.76,
+  "slippage_ticks": 0,
+  "requested_range": ["2015-01-01", "2026-07-05"],
+  "params": {"NRows": 24, "StateWindow": 25, "MinLen": 15, "MaxAge": 40, "DetWindow": 120,
+             "MinBars": 8, "ECut": 0.38, "ACut": 0.55, "BiasStr": 0.3, "TargetR": 2.0},
+  "sample_type": "full",
+  "notes": "SUSPECT run. 1790 trades - ~5x too many, consistent with a Tick/150 primary series (wrong bar type) generating spurious signals. Tick Replay OFF. Kept only as a cautionary comparison; do NOT trust these numbers."
+}

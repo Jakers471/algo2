@@ -25,3 +25,8 @@ tools/csverify/input.json
 tools/csverify/output.json
 experiments/engine/out/overnight_2015/
 experiments/engine/out/overnight_2015_log.txt
+
+# python bytecode + local sim cache (regenerable)
+__pycache__/
+*.pyc
+backtests/_sim_cache/

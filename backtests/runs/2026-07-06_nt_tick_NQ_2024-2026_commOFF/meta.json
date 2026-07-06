@@ -1,0 +1,17 @@
+{
+  "run_id": "2026-07-06_nt_tick_NQ_2024-2026_commOFF",
+  "created_utc": "2026-07-06T12:25:15Z",
+  "platform": "ninjatrader",
+  "strategy": "VABreakout",
+  "instrument": "NQ",
+  "bar_type": "Minute/1",
+  "tick_replay": true,
+  "fill_resolution": "tick",
+  "commission_per_rt": 0.0,
+  "slippage_ticks": 0,
+  "requested_range": ["2020-01-01", "2026-07-05"],
+  "params": {"NRows": 24, "StateWindow": 25, "MinLen": 15, "MaxAge": 40, "DetWindow": 120,
+             "MinBars": 8, "ECut": 0.38, "ACut": 0.55, "BiasStr": 0.3, "TargetR": 2.0},
+  "sample_type": "out_of_sample",
+  "notes": "FIRST honest run (tick replay ON, Minute/1). Commission was OFF and slippage 0 - NOT yet aligned to the $4/RT + 1tick contract. Tick data only reaches ~2yr so trades start 2024-03 despite the 2020 request. No Stop/Target/R columns yet (R inferred/absent)."
+}

@@ -1,0 +1,8 @@
+run_id,platform,range,trades,win%,expectancy_R,total_R,net$,tick_replay,commission_rt,sample_type,commit,analyzed_utc
+2026-07-06_nt_notick_NQ_2015-2026_barTypeSUSPECT,ninjatrader,2015-01-02..2026-03-19,1790,33.9,,,-10611.0,False,5.76,full,2f04152,2026-07-06T17:58Z
+2026-07-06_nt_tick_NQ_2024-2026_commOFF,ninjatrader,2024-03-14..2026-03-19,228,44.3,,,22245.0,True,0.0,out_of_sample,2f04152,2026-07-06T17:58Z
+2026-07-06_nt_tick_NQ_2024-2026,ninjatrader,2024-03-14..2026-03-19,228,45.6,0.218,49.8,22141.0,True,4.0,full,2f04152,2026-07-06T18:58Z
+2026-07-06_qc_minute_NQ_2015-2026_DIRBUG,quantconnect,2015-01-02..2026-06-30,559,15.2,,,16706.0,False,4.0,full,2f04152,2026-07-06T19:15Z
+2026-07-06_qc_minute_NQ_2015-2026_FIXED,quantconnect,2015-01-06..2026-06-30,833,34.3,,,-13950.0,False,4.0,full,2f04152,2026-07-06T19:45Z
+2026-07-06_qc_second_NQ_2024-2026,quantconnect,2024-01-18..2026-06-30,202,34.2,,,15311.0,False,4.0,out_of_sample,2f04152,2026-07-06T20:04Z
+2026-07-06_qc_second_NQ_2015-2026,quantconnect,2015-01-06..2026-06-30,864,35.6,,,25551.0,False,4.0,full,2f04152,2026-07-06T20:29Z

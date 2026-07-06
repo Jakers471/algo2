@@ -1,8 +1,13 @@
-# verify — C# ↔ Python equivalence check for the C# port
+# verify — Python ↔ LEAN ↔ NinjaTrader equivalence check
 
-Proves `lean/vabreakout_cs/Main.cs`'s math (`Vab.Grade`, `Vab.FindConsolidation`) is byte-identical
-to the frozen Python **source of truth** (`experiments/engine/grade.py`, `src/strategy/readings/consolidation.py`).
-Needs `dotnet` (any recent SDK) + the project's Python env.
+Proves BOTH C# ports' math is byte-identical to the frozen Python **source of truth**
+(`experiments/engine/grade.py`, `src/strategy/readings/consolidation.py`):
+- **LEAN** — `lean/vabreakout_cs/Main.cs` (`Vab.Grade`, `Vab.FindConsolidation`, Span-based)
+- **NinjaTrader** — `ninjatrader/VABreakout.cs` (`VabNt.Grade`, `VabNt.FindConsolidation`, List-based)
+
+Both are copied verbatim into `Program.cs` and run against the same 52 windows. `ALL MATCH`
+means Python == LEAN == NT (all three impls compute identical signals). Needs `dotnet` + the
+project's Python env.
 
 **Rule (do this before shipping any change to the C# math):** run all three steps and confirm `ALL MATCH`.
 Don't optimize or edit `Vab` without re-passing this.
@@ -10,7 +15,7 @@ Don't optimize or edit `Vab` without re-passing this.
 ```bash
 python tools/csverify/export.py        # 1. dump 52 windows + Python-source expected -> input.json
 cd lean/vabreakout_cs/verify && dotnet run -c Release   # 2. compile Vab + run it -> output.json  (also = the compile check)
-python tools/csverify/compare.py       # 3. diff -> "consolidation 52/52 · grade 52/52 · ALL MATCH"
+python tools/csverify/compare.py       # 3. diff -> "LEAN 52/52 | NT 52/52 | ALL MATCH"
 ```
 
 ## What it does

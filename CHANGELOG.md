@@ -5,7 +5,51 @@ All notable changes to this project. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **QC LEAN execution — real bracket orders (the "0% win" bug).** The QC port's manual
+  `CheckExit` read the 1m bar's aggregate high/low and couldn't tell whether the stop was hit
+  *before or after* the entry filled within the same bar; with a tight consolidation VA that
+  stopped nearly every trade out at −1R (2015–2026 run: **0% win, −545R**, and only 4/1041 long
+  fills). Replaced it: once the entry stop fills, `Main.cs` now places a **real stop-market +
+  limit bracket** (manual OCO in `OnOrderEvent`), and rollover/session-close go through
+  `FlattenPosition`. Child orders only trigger on *later* bars, so the entry's own bar can't stop
+  it out. Strategy math untouched (csverify stays green; NT/Python unaffected).
+- **QC LEAN price-scale mismatch (the "all-short / 4-long" bug).** `Main.cs` computed order prices
+  (Vah/Val) from **BackwardsRatio-adjusted** continuous data but submitted them on the **raw**
+  `_future.Mapped` contract. The adjustment grows back in time (anchored at the present), so pre-2026
+  buy-stops landed far *above* the raw market (never filled — 4/1041 longs) while sell-stops
+  triggered *instantly* at garbage prices (582 shorts, all losers). Fingerprint: the algo's R
+  (adjusted levels) read ~0 while QC's P&L (raw fills) was −$53k. Fix: switch to
+  `DataNormalizationMode.Raw` so signal prices and order prices share one scale; break the session
+  on `SymbolChanged` (clear 1m + 5m buffers) so a raw roll-jump can't span a grade window. Intraday
+  signals are unchanged within a session (Raw ≡ BackwardsRatio in shape); math untouched.
+
 ### Added
+- **`backtests/` — one home + one analytics engine for every backtest run.** Each
+  run (NinjaTrader, QuantConnect, or Python) lands in `backtests/runs/<run_id>/`
+  as a self-describing folder: raw `trades.csv`/`trades.json` + a `meta.json` label
+  (platform, bar type, tick-replay, commission/slippage, fill resolution, params
+  snapshot, sample type). `analyze.py` normalizes any engine's dump to one canonical
+  trade schema and writes `report.md` + `equity.png` (stats in the same vocabulary as
+  `src/backtest/report.py`: win%, expectancy R, total R, maxDD, profit factor, net $,
+  target-hit%), appending a row to `registry.csv`. `compare.py` puts N runs side by
+  side and flags when their cost/fill contracts don't match. `import_qc.py` pulls a
+  QC ObjectStore trades JSON into a labeled run. See `backtests/README.md`.
+- **csverify third target (NinjaTrader).** `tools/csverify` now verifies NT's
+  List-based `Grade`/`FindConsolidation` (`ninjatrader/VABreakout.cs`) against the
+  Python source of truth alongside the LEAN Span version — so all three impls are
+  proven signal-identical (Python == LEAN == NT, 52/52 consolidation + grade).
+- **NinjaTrader run capture + AI brief.** `ninjatrader/NT_AI_BRIEF.md` is the contract
+  for the NT8 assistant (frozen constants, required config, cost/fill contract, export
+  format, gotchas, stay-aligned workflow). NT export upgraded (`TradeExporter.cs`):
+  per-trade Stop/Target/R, a Minute/1 fail-fast guard, and auto-save into
+  `backtests/runs/` with `meta.json`.
+- **Top-level `README.md` front door** — replaced the 3-line stub with a proper
+  "start here" for humans and AIs: the strategy in three sentences, an ordered
+  reading path (CLAUDE.md → GRADE_SPEC → src/strategy in flow order → validation →
+  NOTES), a repo map, run commands, and an **honest-status note** on the
+  fill-mirage (paper ~55–62% win vs QC-real 43% market / 14% stop; min-VA-width
+  filter flagged as the open fix).
 - **ATR indicator (experimental)** — Average True Range wired in as a normal
   indicator (both halves, CLAUDE.md #5). Math: `src/indicators/atr.py` (Wilder
   smoothing of true range, per-bar values in points; drops `period-1` warm-up bars
