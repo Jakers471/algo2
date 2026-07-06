@@ -118,7 +118,7 @@ def strategy_config() -> dict:
     return {
         "use": {
             "scorer": use.get("scorer", "v1"),
-            "decider": use.get("decider", "v1"),
+            "decider": use.get("decider", "va_breakout"),
             "manager": use.get("manager", "fixed"),
         },
         "readings": {

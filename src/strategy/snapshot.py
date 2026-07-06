@@ -19,6 +19,7 @@ import pandas as pd
 from ..config import strategy_config
 from ..indicators.volume import compute_volume
 from ..indicators.volume_profile import compute_volume_profile
+from .readings.structure import read_structure
 from .readings.volume import read_volume
 from .readings.volume_profile import read_volume_profile
 
@@ -34,6 +35,7 @@ class Snapshot:
     # --- readings (facts derived from raw indicators) ---
     volume_profile: dict | None = None   # forming session: session/poc/vah/val/volume
     volume: dict | None = None           # time-based: bar / rvol / delta (per-bar)
+    structure: dict | None = None        # GRADE engine: state/strength/poc/vah/val
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -54,6 +56,7 @@ def build_snapshot(df: pd.DataFrame, symbol: str, tf: str) -> "Snapshot | None":
     vp_reading = read_volume_profile(compute_volume_profile(df), asof)
     vol_reading = read_volume(compute_volume(df),
                               window=rcfg["volume_window"], fast=rcfg["volume_fast"])
+    structure_reading = read_structure(df)
 
     return Snapshot(
         symbol=symbol,
@@ -62,4 +65,5 @@ def build_snapshot(df: pd.DataFrame, symbol: str, tf: str) -> "Snapshot | None":
         price=price,
         volume_profile=vp_reading,
         volume=vol_reading,
+        structure=structure_reading,
     )

@@ -67,7 +67,7 @@ moving_averages:
 strategy:
   use:
     scorer:  v1
-    decider: v1
+    decider: va_breakout
     manager: fixed
 
   # readings — knobs for deriving facts from raw indicators (the SNAPSHOT base).
