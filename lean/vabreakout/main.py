@@ -32,7 +32,7 @@ def _session_of(dt):
 class VaBreakout(QCAlgorithm):
 
     def initialize(self):
-        self.set_start_date(2022, 1, 1)           # 3-year validation sample (~8 min on cloud)
+        self.set_start_date(2015, 1, 1)           # 10 years (match the local overnight run)
         self.set_end_date(2025, 1, 1)
         self.set_cash(100_000)
         self.set_time_zone(TimeZones.CHICAGO)     # so self.time matches the session windows
@@ -50,6 +50,7 @@ class VaBreakout(QCAlgorithm):
 
         self._b1, self._st1, self._b5 = [], [], []   # 1m bars, 1m states (aligned), 5m session bars
         self._session = None
+        self._last_bar = None                        # to detect data gaps that break a session
         self._traded = set()
         self._pos = None
         self._diag = {"got_bar": False, "trades": 0}     # one-time diagnostics
@@ -97,8 +98,12 @@ class VaBreakout(QCAlgorithm):
 
     # ---- 5m stream: session bias + decide + entry ----
     def _on_5m(self, sender, bar):
+        # A >30-min gap (weekend / missing overnight) breaks the session, so "NY day1..NY day2"
+        # doesn't merge into one (which collapses the bias -> no trades).
+        gap = self._last_bar is not None and (self.time - self._last_bar).total_seconds() > 1800
+        self._last_bar = self.time
         sess = _session_of(self.time)                         # algo clock (Chicago)
-        if sess != self._session:
+        if sess != self._session or gap:
             if self._pos is not None:
                 self.liquidate(self._future.mapped)           # flat at session close (intraday)
                 self._record(self._pos, bar.close, "session_close")

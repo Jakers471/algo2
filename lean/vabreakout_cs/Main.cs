@@ -37,6 +37,7 @@ namespace QuantConnect.Algorithm.CSharp
         private readonly double[] _so = new double[512], _sh = new double[512], _sl = new double[512],
                                   _sc = new double[512], _sv = new double[512];
         private string _session = null;
+        private DateTime _lastBar = DateTime.MinValue;   // to detect data gaps that break a session
         private HashSet<(double, double)> _traded = new();
         private Vab.Intent _pos;
         private bool _inPos = false;
@@ -46,7 +47,7 @@ namespace QuantConnect.Algorithm.CSharp
 
         public override void Initialize()
         {
-            SetStartDate(2022, 1, 1);
+            SetStartDate(2015, 1, 1);        // 10 years (match the local overnight run)
             SetEndDate(2025, 1, 1);
             SetCash(100000);
             SetTimeZone(TimeZones.Chicago);
@@ -116,8 +117,12 @@ namespace QuantConnect.Algorithm.CSharp
         // ---- 5m stream: session bias + decide + entry ----
         private void On5m(object sender, TradeBar bar)
         {
+            // A >30-min gap between bars (weekend / missing overnight) breaks the session, so
+            // "NY day1..NY day2" doesn't merge into one (which collapses the bias -> no trades).
+            bool gap = _lastBar != DateTime.MinValue && (Time - _lastBar).TotalMinutes > 30;
+            _lastBar = Time;
             var sess = SessionOf(Time);
-            if (sess != _session)
+            if (sess != _session || gap)
             {
                 if (_inPos) { Liquidate(_future.Mapped); Record((double)bar.Close, "session_close"); _inPos = false; }
                 _session = sess;
