@@ -103,7 +103,6 @@ class VaBreakout(QCAlgorithm):
                 self.liquidate(self._future.mapped)           # flat at session close (intraday)
                 self._record(self._pos, bar.close, "session_close")
                 self._pos = None
-            self.log(f"{self.time} -> session {sess}  (5m={len(self._b5)} 1m={len(self._b1)})")
             self._session, self._b5, self._traded = sess, [], set()
         if sess is None:
             return
@@ -134,8 +133,6 @@ class VaBreakout(QCAlgorithm):
         self.market_order(self._future.mapped, qty)
         self._pos = dict(intent)
         self._diag["trades"] += 1
-        self.log(f"{self.time} ENTER {intent['direction']} @{intent['entry']:.1f} "
-                 f"stop {intent['stop']:.1f} tgt {intent['target']:.1f}")
 
     # ---- checkpointing: persist trades so a dropped connection never loses the run ----
     def _record(self, p, exit_px, reason):
@@ -148,16 +145,20 @@ class VaBreakout(QCAlgorithm):
                              "exit": exit_px, "reason": reason, "R": R})
         self._checkpoint()
 
-    def _checkpoint(self):
+    def _checkpoint(self, force=False):
+        # THROTTLED: log/save only every 25 trades (+ at end). Logging on every trade trips
+        # QC's log rate-limit, which throttles the whole algorithm (looks like a stall).
         n = len(self._trades)
+        if not force and n % 25 != 0:
+            return
         wins = sum(1 for t in self._trades if t["R"] > 0)
         total = round(sum(t["R"] for t in self._trades), 2)
-        self.log(f"{self.time} EXIT {self._trades[-1]['reason']} {self._trades[-1]['R']:+.2f}R  "
-                 f"| running: {n} trades, {wins}/{n} win, {total:+.1f}R")
+        self.log(f"{self.time} running: {n} trades, {wins}/{max(n,1)} win, {total:+.1f}R")
         self.object_store.save("vabreakout_trades.json", json.dumps(self._trades))
 
     def on_end_of_algorithm(self):
-        self._checkpoint() if self._trades else None
+        if self._trades:
+            self._checkpoint(force=True)
         n = len(self._trades); wins = sum(1 for t in self._trades if t["R"] > 0)
         total = round(sum(t["R"] for t in self._trades), 2)
         wr = (wins / n) if n else 0.0
