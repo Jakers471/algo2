@@ -15,7 +15,7 @@ import json
 import numpy as np
 
 from grade_lib import (grade, state_of, find_consolidation, decide,
-                       MIN_BARS, STATE_WINDOW, MIN_LEN)
+                       MIN_BARS, STATE_WINDOW, MIN_LEN, DET_WINDOW)
 
 CHI_WINDOWS = [("Asia", 18 * 60, 3 * 60), ("London", 3 * 60, 8 * 60), ("NY", 8 * 60, 17 * 60)]
 
@@ -79,7 +79,7 @@ class VaBreakout(QCAlgorithm):
             self._st1.append(state_of(w[:, 0], w[:, 1], w[:, 2], w[:, 3], w[:, 4]))
         else:
             self._st1.append(None)
-        if len(self._b1) > 400:
+        if len(self._b1) > 800:                   # amortized trim: copy every 400 bars, not every bar
             self._b1 = self._b1[-400:]; self._st1 = self._st1[-400:]
         if self._pos is not None:
             self._check_exit(bar)
@@ -116,8 +116,10 @@ class VaBreakout(QCAlgorithm):
 
         s5 = np.array(self._b5, float)
         strength = grade(s5[:, 0], s5[:, 1], s5[:, 2], s5[:, 3], s5[:, 4]).strength
-        b1 = np.array(self._b1, float)
-        cons = find_consolidation(self._st1, b1[:, 0], b1[:, 1], b1[:, 2], b1[:, 3], b1[:, 4])
+        # find_consolidation only ever looks at the last DET_WINDOW bars -> pass just those
+        # (bounds the per-5m array regardless of buffer size; identical result).
+        b1 = np.array(self._b1[-DET_WINDOW:], float)
+        cons = find_consolidation(self._st1[-DET_WINDOW:], b1[:, 0], b1[:, 1], b1[:, 2], b1[:, 3], b1[:, 4])
         intent = decide(strength, cons, bar.close)
         if intent is None:
             return
