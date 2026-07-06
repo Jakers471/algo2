@@ -1,19 +1,21 @@
 /*
  * lean/vabreakout_cs/Main.cs — VA-breakout on QuantConnect LEAN (NQ E-mini), in C#.
  *
- * A byte-for-byte port of lean/vabreakout (Python), which itself mirrors src/strategy:
- *   L1 = 5m session bias (Grade().Strength), L2 = a 1m CONSOLIDATION; enter on the break of
- *   its value area in the session's direction, stop = opposite edge, target 2R. Entries decided
- *   on 5m; exits checked on 1m (intrabar). Sessions off the algo clock (Chicago).
+ * Byte-for-byte port of lean/vabreakout (Python) / src/strategy: L1 = 5m session bias
+ * (Grade().Strength), L2 = a 1m CONSOLIDATION; enter on the break of its value area in the
+ * session's direction, stop = opposite edge, target 2R. Entries decided on 5m; exits on 1m.
  *
- * Why C#: compiled + no Python GIL -> dramatically faster than the Python algo (no numpy tricks
- * needed; plain loops are fast). Same logic and constants, so it should reproduce the Python
- * trades (modulo QC's continuous-contract data). NOTE: written from the LEAN C# API but not
- * compiled in this environment — run `lean cloud backtest` and we iterate on any compile errors.
+ * PERFORMANCE: the per-bar hot path (Grade) is written TIGHT — no LINQ, no per-bar allocations.
+ * It slices the buffers with zero-copy Span<double> (CollectionsMarshal.AsSpan) and uses a
+ * stackalloc for the profile bins. Manual min/max/sum loops. This is what makes C# actually fast;
+ * naive LINQ/GetRange().ToArray() in a million-call loop is slower than optimized Python.
+ *
+ * Written from the LEAN C# API but not compiled in this env — first cloud run may surface C#
+ * errors to iterate on.
  */
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Runtime.InteropServices;
 using Newtonsoft.Json;
 using QuantConnect.Data;
 using QuantConnect.Data.Consolidators;
@@ -26,7 +28,6 @@ namespace QuantConnect.Algorithm.CSharp
     {
         private Future _future;
         private Symbol _sym;
-        // 1m buffers (parallel arrays) + per-bar states; 5m session buffers
         private readonly List<double> _o1 = new(), _h1 = new(), _l1 = new(), _c1 = new(), _v1 = new();
         private readonly List<string> _st1 = new();
         private readonly List<double> _o5 = new(), _h5 = new(), _l5 = new(), _c5 = new(), _v5 = new();
@@ -43,7 +44,7 @@ namespace QuantConnect.Algorithm.CSharp
             SetStartDate(2022, 1, 1);
             SetEndDate(2025, 1, 1);
             SetCash(100000);
-            SetTimeZone(TimeZones.Chicago);   // so Time matches the Chicago session windows
+            SetTimeZone(TimeZones.Chicago);
 
             _future = AddFuture(Futures.Indices.NASDAQ100EMini, Resolution.Minute,
                 dataNormalizationMode: DataNormalizationMode.BackwardsRatio,
@@ -61,7 +62,7 @@ namespace QuantConnect.Algorithm.CSharp
         // ---- 1m stream: buffer + intrabar exit ----
         public override void OnData(Slice slice)
         {
-            foreach (var _ in slice.SymbolChangedEvents.Values)   // contract rollover -> go flat
+            foreach (var _ in slice.SymbolChangedEvents.Values)
                 if (_inPos) { Liquidate(); Record(_pos.Entry, "rollover"); _inPos = false; }
 
             if (!slice.Bars.TryGetValue(_sym, out var bar) &&
@@ -74,15 +75,17 @@ namespace QuantConnect.Algorithm.CSharp
             _c1.Add((double)bar.Close); _v1.Add((double)bar.Volume);
 
             int n = _c1.Count;
-            if (n >= Vab.StateWindow + 1)   // grade the trailing 26-bar window (bars[i-25:i+1]) once
+            if (n >= Vab.StateWindow + 1)   // grade the trailing 26-bar window once (zero-copy span)
             {
                 int s = n - (Vab.StateWindow + 1), len = Vab.StateWindow + 1;
-                _st1.Add(Vab.Grade(Sub(_o1, s, len), Sub(_h1, s, len), Sub(_l1, s, len),
-                                   Sub(_c1, s, len), Sub(_v1, s, len)).State);
+                _st1.Add(Vab.Grade(
+                    CollectionsMarshal.AsSpan(_o1).Slice(s, len), CollectionsMarshal.AsSpan(_h1).Slice(s, len),
+                    CollectionsMarshal.AsSpan(_l1).Slice(s, len), CollectionsMarshal.AsSpan(_c1).Slice(s, len),
+                    CollectionsMarshal.AsSpan(_v1).Slice(s, len)).State);
             }
             else _st1.Add(null);
 
-            if (_c1.Count > 800) TrimHead();   // amortized trim: every ~400 bars, not every bar
+            if (_c1.Count > 800) TrimHead();
 
             if (_inPos) CheckExit(bar);
         }
@@ -104,7 +107,7 @@ namespace QuantConnect.Algorithm.CSharp
         // ---- 5m stream: session bias + decide + entry ----
         private void On5m(object sender, TradeBar bar)
         {
-            var sess = SessionOf(Time);   // algo clock (Chicago)
+            var sess = SessionOf(Time);
             if (sess != _session)
             {
                 if (_inPos) { Liquidate(_future.Mapped); Record((double)bar.Close, "session_close"); _inPos = false; }
@@ -120,17 +123,20 @@ namespace QuantConnect.Algorithm.CSharp
             if (IsWarmingUp || _inPos) return;
             if (_o5.Count < Vab.MinBars || _c1.Count < Vab.StateWindow + Vab.MinLen) return;
 
-            double strength = Vab.Grade(_o5.ToArray(), _h5.ToArray(), _l5.ToArray(),
-                                        _c5.ToArray(), _v5.ToArray()).Strength;          // L1 bias
+            double strength = Vab.Grade(
+                CollectionsMarshal.AsSpan(_o5), CollectionsMarshal.AsSpan(_h5), CollectionsMarshal.AsSpan(_l5),
+                CollectionsMarshal.AsSpan(_c5), CollectionsMarshal.AsSpan(_v5)).Strength;              // L1 bias
 
-            int m = _c1.Count, lo = Math.Max(0, m - Vab.DetWindow), cnt = m - lo;         // last 120 (L2)
+            int m = _c1.Count, lo = Math.Max(0, m - Vab.DetWindow), cnt = m - lo;                      // last 120 (L2)
             var cons = Vab.FindConsolidation(_st1.GetRange(lo, cnt),
-                Sub(_o1, lo, cnt), Sub(_h1, lo, cnt), Sub(_l1, lo, cnt), Sub(_c1, lo, cnt), Sub(_v1, lo, cnt));
+                CollectionsMarshal.AsSpan(_o1).Slice(lo, cnt), CollectionsMarshal.AsSpan(_h1).Slice(lo, cnt),
+                CollectionsMarshal.AsSpan(_l1).Slice(lo, cnt), CollectionsMarshal.AsSpan(_c1).Slice(lo, cnt),
+                CollectionsMarshal.AsSpan(_v1).Slice(lo, cnt));
 
             var intent = Vab.Decide(strength, cons, (double)bar.Close);
             if (!intent.Valid) return;
             var sig = (Math.Round(intent.Entry, 1), Math.Round(intent.Stop, 1));
-            if (_traded.Contains(sig)) return;   // one trade per base
+            if (_traded.Contains(sig)) return;
             _traded.Add(sig);
             Enter(intent);
         }
@@ -156,42 +162,40 @@ namespace QuantConnect.Algorithm.CSharp
         {
             int n = _trades.Count;
             if (!force && n % 25 != 0) return;
-            int wins = _trades.Count(t => t.R > 0);
-            double total = Math.Round(_trades.Sum(t => t.R), 2);
-            Log($"{Time} running: {n} trades, {wins}/{Math.Max(n, 1)} win, {total}R");
+            int wins = 0; double total = 0;
+            foreach (var t in _trades) { if (t.R > 0) wins++; total += t.R; }
+            Log($"{Time} running: {n} trades, {wins}/{Math.Max(n, 1)} win, {Math.Round(total, 2)}R");
             ObjectStore.Save("vabreakout_trades.json", JsonConvert.SerializeObject(_trades));
         }
 
         public override void OnEndOfAlgorithm()
         {
             if (_trades.Count > 0) Checkpoint(true);
-            int n = _trades.Count, wins = _trades.Count(t => t.R > 0);
-            double total = Math.Round(_trades.Sum(t => t.R), 2);
-            Log($"DONE — {n} trades, {(n > 0 ? 100.0 * wins / n : 0):0}% win, {total}R total " +
+            int n = _trades.Count, wins = 0; double total = 0;
+            foreach (var t in _trades) { if (t.R > 0) wins++; total += t.R; }
+            Log($"DONE — {n} trades, {(n > 0 ? 100 * wins / n : 0)}% win, {Math.Round(total, 2)}R total " +
                 $"(entries {_entries}, gotBar {_gotBar})");
         }
 
         // ---- helpers ----
-        private static double[] Sub(List<double> buf, int start, int count) => buf.GetRange(start, count).ToArray();
-
         private void TrimHead()
         {
             int drop = _c1.Count - 400;
-            foreach (var b in new[] { _o1, _h1, _l1, _c1, _v1 }) b.RemoveRange(0, drop);
-            _st1.RemoveRange(0, drop);
+            _o1.RemoveRange(0, drop); _h1.RemoveRange(0, drop); _l1.RemoveRange(0, drop);
+            _c1.RemoveRange(0, drop); _v1.RemoveRange(0, drop); _st1.RemoveRange(0, drop);
         }
 
         private static string SessionOf(DateTime dt)
         {
             int m = dt.Hour * 60 + dt.Minute;
-            if (m >= 18 * 60 || m < 3 * 60) return "Asia";       // wraps midnight
+            if (m >= 18 * 60 || m < 3 * 60) return "Asia";
             if (m >= 3 * 60 && m < 8 * 60) return "London";
             if (m >= 8 * 60 && m < 17 * 60) return "NY";
             return null;
         }
     }
 
-    // ================= the strategy math (mirrors grade_lib.py) =================
+    // ================= the strategy math (mirrors grade_lib.py) — allocation-free, no LINQ =========
     public static class Vab
     {
         public const int NRows = 24, StateWindow = 25, MinLen = 15, MaxAge = 40, DetWindow = 120, MinBars = 8;
@@ -202,58 +206,40 @@ namespace QuantConnect.Algorithm.CSharp
         public struct Intent { public bool Valid; public string Direction; public double Entry, Stop, Target; }
         public class TradeRec { public string time, direction, reason; public double entry, stop, target, exit, R; }
 
-        private static int ArgMax(double[] a) { int m = 0; for (int i = 1; i < a.Length; i++) if (a[i] > a[m]) m = i; return m; }
-
-        private static (int, int) ValueArea(double[] vol, int poc, double pct)
+        public static GResult Grade(ReadOnlySpan<double> o, ReadOnlySpan<double> h, ReadOnlySpan<double> l,
+                                    ReadOnlySpan<double> c, ReadOnlySpan<double> v)
         {
-            double target = vol.Sum() * pct, acc = vol[poc];
-            int lo = poc, hi = poc, n = vol.Length;
-            while (acc < target && (lo > 0 || hi < n - 1))
-            {
-                double below = lo > 0 ? vol[lo - 1] : -1.0, above = hi < n - 1 ? vol[hi + 1] : -1.0;
-                if (above >= below) { hi++; acc += vol[hi]; } else { lo--; acc += vol[lo]; }
-            }
-            return (lo, hi);
-        }
+            int n = c.Length;
+            double O = o[0], C = c[n - 1], H = h[0], L = l[0], travel = 0;
+            for (int i = 0; i < n; i++) { if (h[i] > H) H = h[i]; if (l[i] < L) L = l[i]; }
+            for (int i = 1; i < n; i++) { double d = c[i] - c[i - 1]; travel += d < 0 ? -d : d; }
+            double rng = H - L; if (rng == 0) rng = 1e-9;
+            if (travel == 0) travel = 1e-9;
+            double net = C - O, rs = rng / NRows;
 
-        private static double[] ProfileFor(double[] h, double[] l, double[] v, double bas, double rs, int nRows)
-        {
-            var bin = new double[nRows];
-            for (int p = 0; p < h.Length; p++)
+            Span<double> bin = stackalloc double[NRows];
+            for (int p = 0; p < n; p++)
             {
                 double bl = l[p], bh = h[p], vol = v[p];
-                if (bh <= bl) { bin[Math.Min(Math.Max((int)((bl - bas) / rs), 0), nRows - 1)] += vol; continue; }
-                int loI = Math.Min(Math.Max((int)((bl - bas) / rs), 0), nRows - 1);
-                int hiI = Math.Min(Math.Max((int)((bh - bas) / rs), 0), nRows - 1);
+                if (bh <= bl) { bin[Clamp((int)((bl - L) / rs))] += vol; continue; }
+                int loI = Clamp((int)((bl - L) / rs)), hiI = Clamp((int)((bh - L) / rs));
                 double span = bh - bl;
                 for (int bi = loI; bi <= hiI; bi++)
                 {
-                    double bBot = bas + bi * rs, overlap = Math.Min(bh, bBot + rs) - Math.Max(bl, bBot);
-                    if (overlap > 0) bin[bi] += vol * (overlap / span);
+                    double bBot = L + bi * rs, ov = Math.Min(bh, bBot + rs) - Math.Max(bl, bBot);
+                    if (ov > 0) bin[bi] += vol * (ov / span);
                 }
             }
-            return bin;
-        }
-
-        public static GResult Grade(double[] o, double[] h, double[] l, double[] c, double[] v)
-        {
-            int n = c.Length;
-            double O = o[0], C = c[n - 1], H = h.Max(), L = l.Min();
-            double rng = (H - L); if (rng == 0) rng = 1e-9;
-            double net = C - O;
-            double travel = 0; for (int i = 1; i < n; i++) travel += Math.Abs(c[i] - c[i - 1]);
-            if (travel == 0) travel = 1e-9;
-
-            double rs = rng / NRows;
-            var bin = ProfileFor(h, l, v, L, rs, NRows);
-            int pocI; int vaLo, vaHi;
-            if (bin.Sum() <= 0) { pocI = 0; vaLo = 0; vaHi = NRows - 1; }
-            else { pocI = ArgMax(bin); (vaLo, vaHi) = ValueArea(bin, pocI, 0.70); }
-
-            double acceptance = 1.0 - (double)(vaHi - vaLo + 1) / NRows;
-            double efficiency = Math.Abs(net) / travel;
-            string direction = net > 0 ? "bull" : net < 0 ? "bear" : "flat";
-            string state;
+            double binSum = 0; for (int i = 0; i < NRows; i++) binSum += bin[i];
+            int pocI = 0, vaLo, vaHi;
+            if (binSum <= 0) { vaLo = 0; vaHi = NRows - 1; }
+            else
+            {
+                for (int i = 1; i < NRows; i++) if (bin[i] > bin[pocI]) pocI = i;
+                (vaLo, vaHi) = ValueArea(bin, pocI, 0.70, binSum);
+            }
+            double acceptance = 1.0 - (double)(vaHi - vaLo + 1) / NRows, efficiency = Math.Abs(net) / travel;
+            string direction = net > 0 ? "bull" : net < 0 ? "bear" : "flat", state;
             if (n < MinBars) state = "UNCLEAR";
             else
             {
@@ -266,47 +252,53 @@ namespace QuantConnect.Algorithm.CSharp
                 Vah = L + (vaHi + 1) * rs, Val = L + vaLo * rs, Poc = L + (pocI + 0.5) * rs };
         }
 
-        private static List<(int, int)> ConsRuns(IList<string> states, int minLen)
+        private static int Clamp(int i) => i < 0 ? 0 : (i >= NRows ? NRows - 1 : i);
+
+        private static (int, int) ValueArea(ReadOnlySpan<double> vol, int poc, double pct, double sum)
         {
-            var outp = new List<(int, int)>();
-            int i = 0, n = states.Count;
-            while (i < n)
+            double target = sum * pct, acc = vol[poc];
+            int lo = poc, hi = poc, n = vol.Length;
+            while (acc < target && (lo > 0 || hi < n - 1))
             {
-                int j = i;
-                while (j < n && states[j] == states[i]) j++;
-                if (states[i] == "CONSOLIDATION" && j - i >= minLen) outp.Add((i, j - 1));
-                i = j;
+                double below = lo > 0 ? vol[lo - 1] : -1.0, above = hi < n - 1 ? vol[hi + 1] : -1.0;
+                if (above >= below) { hi++; acc += vol[hi]; } else { lo--; acc += vol[lo]; }
             }
-            return outp;
+            return (lo, hi);
         }
 
-        public static Cons FindConsolidation(List<string> states, double[] o, double[] h, double[] l, double[] c, double[] v)
+        // states: the last <=DetWindow per-bar states (a fresh copy — modified here); o..v aligned spans.
+        public static Cons FindConsolidation(List<string> states, ReadOnlySpan<double> o, ReadOnlySpan<double> h,
+                                             ReadOnlySpan<double> l, ReadOnlySpan<double> c, ReadOnlySpan<double> v)
         {
             int n = states.Count;
-            if (n < StateWindow + MinLen) return new Cons { Valid = false };
-            int lo = Math.Max(0, n - DetWindow);
-            var st = states.GetRange(lo, n - lo);
-            for (int i = 0; i < Math.Min(StateWindow, st.Count); i++) st[i] = null;   // tail-window warm-up
-            var runs = ConsRuns(st, MinLen);
-            if (runs.Count == 0) return new Cons { Valid = false };
-            var (a, b) = runs[runs.Count - 1];
-            int endedAgo = (n - lo) - 1 - b;
-            if (endedAgo > MaxAge) return new Cons { Valid = false };
-            int A = lo + a, B = lo + b, len = B - A + 1;
-            var g = Grade(o[A..(B + 1)], h[A..(B + 1)], l[A..(B + 1)], c[A..(B + 1)], v[A..(B + 1)]);
-            if (g.Vah <= g.Val) return new Cons { Valid = false };
+            if (n < StateWindow + MinLen) return default;
+            for (int i = 0; i < Math.Min(StateWindow, n); i++) states[i] = null;   // tail-window warm-up
+            int bestA = -1, bestB = -1, i2 = 0;
+            while (i2 < n)
+            {
+                int j = i2; while (j < n && states[j] == states[i2]) j++;
+                if (states[i2] == "CONSOLIDATION" && j - i2 >= MinLen) { bestA = i2; bestB = j - 1; }
+                i2 = j;
+            }
+            if (bestA < 0) return default;
+            int endedAgo = n - 1 - bestB;
+            if (endedAgo > MaxAge) return default;
+            int len = bestB - bestA + 1;
+            var g = Grade(o.Slice(bestA, len), h.Slice(bestA, len), l.Slice(bestA, len),
+                          c.Slice(bestA, len), v.Slice(bestA, len));
+            if (g.Vah <= g.Val) return default;
             return new Cons { Valid = true, Vah = g.Vah, Val = g.Val, Poc = g.Poc, Len = len, EndedAgo = endedAgo };
         }
 
         public static Intent Decide(double strength, Cons cons, double price)
         {
-            if (!cons.Valid || cons.Vah <= cons.Val) return new Intent { Valid = false };
+            if (!cons.Valid || cons.Vah <= cons.Val) return default;
             double risk = cons.Vah - cons.Val;
             if (strength >= BiasStr && price > cons.Vah)
                 return new Intent { Valid = true, Direction = "long", Entry = cons.Vah, Stop = cons.Val, Target = cons.Vah + TargetR * risk };
             if (strength <= -BiasStr && price < cons.Val)
                 return new Intent { Valid = true, Direction = "short", Entry = cons.Val, Stop = cons.Vah, Target = cons.Val - TargetR * risk };
-            return new Intent { Valid = false };
+            return default;
         }
     }
 }
