@@ -173,3 +173,30 @@ expectancy **+0.46R** (down from +0.59R on the 37-trade sample). Findings:
   On 3R: it lifts expectancy (+0.36) and HALVES drawdown (-7 vs -12.7). Its real value is DD, not R.
 - **Best config = 2R**; hard stop (51% win) vs breakeven (smoother, fewer full losses) is preference.
 CAVEAT unchanged: optimistic fills; ~2 trades/week, a couple ticks of cost -> ~+0.38R, still positive.
+
+### `backtest_excursion.py` — MAE/MFE analysis + trade CACHE (PNG)
+Caches the 530-trade set to `out/trades_cache_*.pkl` (gitignored) so this and all later
+management experiments run INSTANTLY (no 1m re-grading). Per-trade MAE (adverse heat before
+exit) and MFE (favorable run), split winners/losers + long/short. `out/backtest_excursion.png`.
+```bash
+python experiments/engine/research/backtest_excursion.py --start 2020-01-01
+```
+**Findings (5yr, 530 trades):** edge is SYMMETRIC (long 323 @ 51% / short 207 @ 52%). Winners
+take almost no heat (mean 0.29R, p90 0.77R, **max 0.98R**); losers all exceed 1R -> the 1.0R
+stop is too wide. Full favorable run is big (median 3.0R, winners ~4R, tail to 40R) -> the 2R
+target caps the tail, but a fixed 3R hurt (see equity) -> needs a trailing tool, not a wider target.
+
+### `backtest_manage.py` — stop sweep + trailing runner (from cache, PNG)
+Two management experiments off the cache (instant): (1) STOP SWEEP - 2R target fixed, stop moved
+to 0.7/0.8/0.9/1.0 x VA, risk-normalized (loss -1R, win 2/f R); (2) TRAILING RUNNER - half off at
+2R + trail the rest by 1R, vs fixed 2R. Both drawn as equity curves. `out/backtest_manage.png`.
+```bash
+python experiments/engine/research/backtest_manage.py
+```
+**Findings:**
+- **Tighter stop wins (the MAE prediction).** 0.8R stop = the sweet spot: exp **+0.57R** (+24% over
+  1.0R's +0.46), total +301R, and LOWER drawdown (-6.5 vs -6.7). 0.7R ties on expectancy but is
+  choppier (DD -9.7) from extra stop-outs. **Adopt the 0.8R stop** - one number, free improvement.
+- **Trailing runner = a WASH** (+243R both, identical curve). The MFE tail is real but "half@2R +
+  trail 1R" is too loose to harvest it: trades that tag 2R then reverse give back on the trailed
+  half exactly what the real runners gain. Capturing the tail needs a tighter trail (open follow-up).
