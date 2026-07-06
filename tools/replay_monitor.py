@@ -55,7 +55,7 @@ YEL, GRN, RED = "33", "32", "31"
 # The SNAPSHOT facts split into per-SOURCE boxes (PRICE / PROFILE / VOLUME) that
 # share the cyan family (they're all facts); the pipeline phases differ.
 PHASE_C = {"PRICE": "96", "PROFILE": "96", "VOLUME": "96",
-           "STRUCT 5m": "96", "STRUCT 1m": "96", "SNAPSHOT": "96",
+           "STRUCT 5m": "96", "STRUCT 1m": "96", "CONSOL": "96", "SNAPSHOT": "96",
            "SCORE": "93", "DECIDE": "95", "MANAGE": "94"}
 SESS_C = {"Asia": "94", "London": "93", "NY": "95"}
 
@@ -113,19 +113,18 @@ def _sig(sigs, key):
 # volume-profile indicator), VOLUME (from the time-based volume indicator). Add a
 # new reading → add a box here.
 PHASES = [
-    ("PRICE",    [("", 14, "<"), ("px", 8, ">")]),
+    ("PRICE",    [("", 15, "<"), ("px", 8, ">")]),
     ("PROFILE",  [("", 6, "<"), ("POC", 7, ">"), ("VAH", 7, ">"), ("VAL", 7, ">"), ("vol", 5, ">")]),
     ("VOLUME",   [("bar", 5, ">"), ("rvol", 4, ">"), ("vexp", 4, ">"), ("Δ", 6, ">")]),
     ("STRUCT 5m",[("", 13, "<"), ("str", 5, ">"), ("eff", 4, ">"), ("acc", 4, ">")]),
     ("STRUCT 1m",[("", 13, "<"), ("str", 5, ">"), ("eff", 4, ">"), ("acc", 4, ">")]),
-    ("SCORE",    [("conv", 4, ">"), ("trend", 4, ">"), ("brk", 4, ">"),
-                  ("loc", 4, ">"), ("", 5, "<")]),
+    ("CONSOL",   [("", 7, ">"), ("", 7, ">"), ("len", 3, ">"), ("ago", 3, ">")]),
     ("DECIDE",   [("", 5, "<"), ("entry", 8, ">"), ("stop", 8, ">"), ("tgt", 8, ">")]),
     ("MANAGE",   [("", 22, "<")]),
 ]
 
 # The fact boxes (left of the pipeline stages) — used by the 'snapshot' view.
-FACT_PHASES = 5
+FACT_PHASES = 6
 
 
 def _struct_cells(stc):
@@ -164,6 +163,12 @@ def _phase_cells(name, st):
         return _struct_cells(snap.get("structure"))
     if name == "STRUCT 1m":                                      # GRADE @ L2 (recent 1m) — fractal
         return _struct_cells(snap.get("structure_ltf"))
+    if name == "CONSOL":                                         # L2 tradeable base (fact)
+        cn = snap.get("consolidation") or {}
+        if not cn:
+            return [("", GRN), ("", RED), ("", DIM), ("", DIM)]  # no base right now
+        return [(lvl(cn.get("vah")), GRN), (lvl(cn.get("val")), RED),   # VAH green / VAL red
+                (str(cn.get("len", "")), DIM), (str(cn.get("ended_ago", "")), DIM)]
     if name == "SCORE":
         conv = sc.get("conviction", 0.0)
         sigs = sc.get("signals") or {}
@@ -192,7 +197,7 @@ def _cw(label, w):
 
 
 def _inner(cols):
-    return 1 + sum(_cw(l, w) for l, w, _ in cols) + (len(cols) - 1) + 1
+    return sum(_cw(l, w) for l, w, _ in cols) + (len(cols) - 1)
 
 
 def _cells(pairs, cols):
@@ -210,14 +215,14 @@ def _cells(pairs, cols):
             out.append(" " * cw)  # blank cell, width preserved
         else:
             out.append(c(format(sval, f"{a}{w}"), code))
-    return " " + " ".join(out) + " "
+    return " ".join(out)
 
 
 def _assemble(bucket_strs, phases):
     out = ""
     for (name, _), bs in zip(phases, bucket_strs):
-        out += c("│", PHASE_C[name]) + bs
-    return out + c("│", GRAY)
+        out += c("┊", PHASE_C[name]) + bs
+    return out + c("┊", GRAY)
 
 
 def top_border(phases):
@@ -342,21 +347,25 @@ def _legend() -> str:
         ("str", "strength = net ÷ range (−1..+1); the session-bias number (+ up / − down)"),
         ("eff", "efficiency = |net| ÷ travel (0..1); how direct the path (progress axis)"),
         ("acc", "acceptance = 1 − value-area fraction; fat POC reads high (acceptance axis)"),
+        ("CONSOL", "L2 tradeable base: VAH (green) / VAL (red) breakout levels · len bars · ago = bars since it ended"),
     ]
     out = [c("FIELDS", "1") + c("  — what each output shows", DIM), "",
            c("SNAPSHOT", PHASE_C["SNAPSHOT"]) + c(" facts — boxed BY SOURCE: ", DIM) +
            c("PRICE", PHASE_C["PRICE"]) + c(" (the bar) · ", DIM) +
            c("PROFILE", PHASE_C["PROFILE"]) + c(" (volume-profile) · ", DIM) +
            c("VOLUME", PHASE_C["VOLUME"]) + c(" (time-based volume) · ", DIM) +
-           c("STRUCT 5m/1m", PHASE_C["STRUCT 5m"]) + c(" (GRADE engine, L1 session + L2 1m — fractal)", DIM)]
+           c("STRUCT 5m/1m", PHASE_C["STRUCT 5m"]) + c(" (GRADE engine, L1 session + L2 1m — fractal) · ", DIM) +
+           c("CONSOL", PHASE_C["CONSOL"]) + c(" (the 1m base)", DIM)]
     for k, v in rows:
-        out.append("  " + c(k.ljust(5), WHT) + " " + c(v, DIM))
+        out.append("  " + c(k.ljust(6), WHT) + " " + c(v, DIM))
     out += ["",
-            (c("SCORE", PHASE_C["SCORE"]) + c(" · ", DIM) + c("DECIDE", PHASE_C["DECIDE"]) +
-             c(" · ", DIM) + c("MANAGE", PHASE_C["MANAGE"]) + c("  pipeline stages (stubs — cells show — until built)", DIM)),
-            "  " + c("SCORE ", WHT) + c("conviction 0..1 + signals (trend/brk/loc) + direction", DIM),
-            "  " + c("DECIDE", WHT) + c(" setup + entry / stop / target", DIM),
-            "  " + c("MANAGE", WHT) + c(" trade state (arm / active / exit)", DIM)]
+            (c("DECIDE", PHASE_C["DECIDE"]) + c(" · ", DIM) + c("MANAGE", PHASE_C["MANAGE"]) +
+             c("  pipeline stages", DIM)),
+            "  " + c("DECIDE", WHT) + c(" the VA-breakout Intent — direction + entry / stop / target", DIM),
+            "  " + c("MANAGE", WHT) + c(" trade state (arm / active / exit) — stub until phase 3", DIM),
+            "",
+            c("  SCORE stage is hidden", DIM) + c(" — VA-breakout is a rule, not a weighted-signal system, so it", DIM),
+            c("  scores nothing. The slot stays in the pipeline for future confluence scoring.", DIM)]
     return "\n".join(out)
 
 
