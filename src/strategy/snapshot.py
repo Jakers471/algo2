@@ -17,6 +17,7 @@ from dataclasses import asdict, dataclass
 import pandas as pd
 
 from ..config import strategy_config
+from ..indicators.sessions import session_instances
 from ..indicators.volume import compute_volume
 from ..indicators.volume_profile import compute_volume_profile
 from .readings.structure import read_structure
@@ -56,7 +57,12 @@ def build_snapshot(df: pd.DataFrame, symbol: str, tf: str) -> "Snapshot | None":
     vp_reading = read_volume_profile(compute_volume_profile(df), asof)
     vol_reading = read_volume(compute_volume(df),
                               window=rcfg["volume_window"], fast=rcfg["volume_fast"])
-    structure_reading = read_structure(df)
+    # STRUCTURE grades the CURRENT SESSION (the strategy's L1 anchor), not the whole
+    # loaded window — grading thousands of bars collapses efficiency toward 0 (always
+    # WHIPSAW). Fall back to the full slice only if no session has formed.
+    insts = session_instances(df)
+    sess_bars = df.iloc[insts[-1]["start_pos"]:insts[-1]["end_pos"] + 1] if insts else df
+    structure_reading = read_structure(sess_bars)
 
     return Snapshot(
         symbol=symbol,
