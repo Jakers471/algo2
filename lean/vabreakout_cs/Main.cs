@@ -132,11 +132,11 @@ namespace QuantConnect.Algorithm.CSharp
             if (IsWarmingUp || _inPos) return;
             if (_o5.Count < Vab.MinBars || _c1.Count < Vab.StateWindow + Vab.MinLen) return;
 
-            int sc = _o5.Count;                                                                       // L1 bias (session)
-            _o5.CopyTo(0, _so, 0, sc); _h5.CopyTo(0, _sh, 0, sc); _l5.CopyTo(0, _sl, 0, sc);
-            _c5.CopyTo(0, _sc, 0, sc); _v5.CopyTo(0, _sv, 0, sc);
-            double strength = Vab.Grade(_so.AsSpan(0, sc), _sh.AsSpan(0, sc), _sl.AsSpan(0, sc),
-                                        _sc.AsSpan(0, sc), _sv.AsSpan(0, sc)).Strength;
+            // L1 bias (session). The session buffer is UNBOUNDED — a data gap can merge sessions
+            // (missing overnight bars => "NY day1..NY day2" reads as one), so use fresh arrays here
+            // (per-5m, negligible) rather than the fixed scratch. Matches the Python (dynamic lists).
+            double strength = Vab.Grade(_o5.ToArray(), _h5.ToArray(), _l5.ToArray(),
+                                        _c5.ToArray(), _v5.ToArray()).Strength;
 
             int m = _c1.Count, lo = Math.Max(0, m - Vab.DetWindow), cnt = m - lo;                      // last 120 (L2)
             _o1.CopyTo(lo, _so, 0, cnt); _h1.CopyTo(lo, _sh, 0, cnt); _l1.CopyTo(lo, _sl, 0, cnt);
