@@ -256,9 +256,17 @@ def _replay_pipeline():
         return _readout_cache[key]
     result = None
     try:
+        asof_ts = pd.Timestamp(st["asof"], unit="s", tz="UTC")
         df = _load_df(st["symbol"], st["tf"], algo_config.chart_config()["limit"])
-        df = df.loc[df.index <= pd.Timestamp(st["asof"], unit="s", tz="UTC")]
-        result = strategy_pipeline.run(df, st["symbol"], st["tf"])
+        df = df.loc[df.index <= asof_ts]
+        # L2 structure needs 1m bars AT the cursor. Load a wide 1m window (covers the
+        # 5m replay range, not just the recent tail), trimmed to asof. Best-effort.
+        try:
+            ltf_df = _load_df(st["symbol"], "1m", 120_000)
+            ltf_df = ltf_df.loc[ltf_df.index <= asof_ts]
+        except Exception:
+            ltf_df = None
+        result = strategy_pipeline.run(df, st["symbol"], st["tf"], ltf_df=ltf_df)
         if result.get("snapshot") is None:
             result = None
             if os.environ.get("REPLAY_DEBUG"):

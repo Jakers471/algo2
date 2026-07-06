@@ -54,7 +54,8 @@ YEL, GRN, RED = "33", "32", "31"
 # Phase identity colors (borders / gutters / labels) — consistent across views.
 # The SNAPSHOT facts split into per-SOURCE boxes (PRICE / PROFILE / VOLUME) that
 # share the cyan family (they're all facts); the pipeline phases differ.
-PHASE_C = {"PRICE": "96", "PROFILE": "96", "VOLUME": "96", "STRUCTURE": "96", "SNAPSHOT": "96",
+PHASE_C = {"PRICE": "96", "PROFILE": "96", "VOLUME": "96",
+           "STRUCT 5m": "96", "STRUCT 1m": "96", "SNAPSHOT": "96",
            "SCORE": "93", "DECIDE": "95", "MANAGE": "94"}
 SESS_C = {"Asia": "94", "London": "93", "NY": "95"}
 
@@ -115,7 +116,8 @@ PHASES = [
     ("PRICE",    [("", 14, "<"), ("px", 8, ">")]),
     ("PROFILE",  [("", 6, "<"), ("POC", 7, ">"), ("VAH", 7, ">"), ("VAL", 7, ">"), ("vol", 5, ">")]),
     ("VOLUME",   [("bar", 5, ">"), ("rvol", 4, ">"), ("vexp", 4, ">"), ("Δ", 6, ">")]),
-    ("STRUCTURE",[("", 13, "<"), ("str", 5, ">"), ("eff", 4, ">"), ("acc", 4, ">")]),
+    ("STRUCT 5m",[("", 13, "<"), ("str", 5, ">"), ("eff", 4, ">"), ("acc", 4, ">")]),
+    ("STRUCT 1m",[("", 13, "<"), ("str", 5, ">"), ("eff", 4, ">"), ("acc", 4, ">")]),
     ("SCORE",    [("conv", 4, ">"), ("trend", 4, ">"), ("brk", 4, ">"),
                   ("loc", 4, ">"), ("", 5, "<")]),
     ("DECIDE",   [("", 5, "<"), ("entry", 8, ">"), ("stop", 8, ">"), ("tgt", 8, ">")]),
@@ -123,7 +125,21 @@ PHASES = [
 ]
 
 # The fact boxes (left of the pipeline stages) — used by the 'snapshot' view.
-FACT_PHASES = 4
+FACT_PHASES = 5
+
+
+def _struct_cells(stc):
+    """One GRADE structure box (state / str / eff / acc) — shared by both scales."""
+    stc = stc or {}
+    state = stc.get("state", "")
+    scol = (GRN if state.endswith("UP") else RED if state.endswith("DN")
+            else YEL if state == "CONSOLIDATION" else DIM)       # regime tint
+    strg = stc.get("strength")
+    return [(state, scol),
+            (f"{strg:+.2f}" if strg is not None else "",
+             GRN if (strg or 0) > 0 else RED if (strg or 0) < 0 else DIM),  # bias sign
+            (f"{stc['efficiency']:.2f}" if "efficiency" in stc else "", WHT),
+            (f"{stc['acceptance']:.2f}" if "acceptance" in stc else "", WHT)]
 
 
 def _phase_cells(name, st):
@@ -144,17 +160,10 @@ def _phase_cells(name, st):
                 (f"{vr['rvol']:.1f}" if "rvol" in vr else "", WHT),        # relative volume
                 (f"{vr['vexp']:.1f}" if "vexp" in vr else "", WHT),        # volume expansion
                 (signed_vol(d), GRN if (d or 0) >= 0 else RED)]            # recent delta
-    if name == "STRUCTURE":                                      # GRADE engine (grade())
-        stc = snap.get("structure") or {}
-        state = stc.get("state", "")
-        scol = (GRN if state.endswith("UP") else RED if state.endswith("DN")
-                else YEL if state == "CONSOLIDATION" else DIM)   # regime tint
-        strg = stc.get("strength")
-        return [(state, scol),
-                (f"{strg:+.2f}" if strg is not None else "",
-                 GRN if (strg or 0) > 0 else RED if (strg or 0) < 0 else DIM),  # bias sign
-                (f"{stc['efficiency']:.2f}" if "efficiency" in stc else "", WHT),
-                (f"{stc['acceptance']:.2f}" if "acceptance" in stc else "", WHT)]
+    if name == "STRUCT 5m":                                      # GRADE @ L1 (5m session)
+        return _struct_cells(snap.get("structure"))
+    if name == "STRUCT 1m":                                      # GRADE @ L2 (recent 1m) — fractal
+        return _struct_cells(snap.get("structure_ltf"))
     if name == "SCORE":
         conv = sc.get("conviction", 0.0)
         sigs = sc.get("signals") or {}
@@ -339,7 +348,7 @@ def _legend() -> str:
            c("PRICE", PHASE_C["PRICE"]) + c(" (the bar) · ", DIM) +
            c("PROFILE", PHASE_C["PROFILE"]) + c(" (volume-profile) · ", DIM) +
            c("VOLUME", PHASE_C["VOLUME"]) + c(" (time-based volume) · ", DIM) +
-           c("STRUCTURE", PHASE_C["STRUCTURE"]) + c(" (GRADE engine)", DIM)]
+           c("STRUCT 5m/1m", PHASE_C["STRUCT 5m"]) + c(" (GRADE engine, L1 session + L2 1m — fractal)", DIM)]
     for k, v in rows:
         out.append("  " + c(k.ljust(5), WHT) + " " + c(v, DIM))
     out += ["",

@@ -36,16 +36,26 @@ class Snapshot:
     # --- readings (facts derived from raw indicators) ---
     volume_profile: dict | None = None   # forming session: session/poc/vah/val/volume
     volume: dict | None = None           # time-based: bar / rvol / delta (per-bar)
-    structure: dict | None = None        # GRADE engine: state/strength/poc/vah/val
+    structure: dict | None = None        # GRADE @ L1 (5m session): state/strength/poc/vah/val
+    structure_ltf: dict | None = None    # GRADE @ L2 (recent 1m window): same fields, finer scale
 
     def to_dict(self) -> dict:
         return asdict(self)
 
 
-def build_snapshot(df: pd.DataFrame, symbol: str, tf: str) -> "Snapshot | None":
+# L2 window: ~1.5h of 1m bars (the LTF base — see memory: mtf-time-scaling). The SAME
+# grade() runs on it as on the L1 session; only the scale (input resolution) differs.
+LTF_BARS = 90
+
+
+def build_snapshot(df: pd.DataFrame, symbol: str, tf: str,
+                   ltf_df: pd.DataFrame | None = None) -> "Snapshot | None":
     """OHLCV slice (tz-aware UTC index, already trimmed to `asof`) -> Snapshot for
     its last bar. Runs each raw indicator once, hands it to the matching reading,
-    then assembles. None if there are no bars."""
+    then assembles. None if there are no bars.
+
+    `ltf_df`: optional finer-timeframe (1m) bars up to the same `asof`, for the L2
+    structure reading. When omitted, structure_ltf is None (the box stays dark)."""
     if df is None or df.empty:
         return None
 
@@ -63,6 +73,9 @@ def build_snapshot(df: pd.DataFrame, symbol: str, tf: str) -> "Snapshot | None":
     insts = session_instances(df)
     sess_bars = df.iloc[insts[-1]["start_pos"]:insts[-1]["end_pos"] + 1] if insts else df
     structure_reading = read_structure(sess_bars)
+    # L2 (fractal): same grade(), on the recent 1m window. Same computes, finer scale.
+    structure_ltf_reading = (read_structure(ltf_df.tail(LTF_BARS))
+                             if ltf_df is not None and not ltf_df.empty else None)
 
     return Snapshot(
         symbol=symbol,
@@ -72,4 +85,5 @@ def build_snapshot(df: pd.DataFrame, symbol: str, tf: str) -> "Snapshot | None":
         volume_profile=vp_reading,
         volume=vol_reading,
         structure=structure_reading,
+        structure_ltf=structure_ltf_reading,
     )

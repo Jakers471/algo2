@@ -27,10 +27,12 @@ from .score import get_scorer
 from .snapshot import build_snapshot
 
 
-def run(df: pd.DataFrame, symbol: str, tf: str) -> dict:
+def run(df: pd.DataFrame, symbol: str, tf: str,
+        ltf_df: pd.DataFrame | None = None) -> dict:
     """OHLCV slice -> {snapshot, scores, intent, action} using the config's chosen
-    stage versions. The one place the stages are wired together."""
-    snap = build_snapshot(df, symbol, tf)
+    stage versions. The one place the stages are wired together. `ltf_df` = optional
+    finer-tf (1m) bars up to the same asof, for the L2 structure reading."""
+    snap = build_snapshot(df, symbol, tf, ltf_df=ltf_df)
     if snap is None:
         return {"snapshot": None, "scores": None, "intent": None, "action": None}
 
