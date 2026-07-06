@@ -1,0 +1,5 @@
+{
+    "algorithm-language": "Python",
+    "parameters": {},
+    "description": "VA-breakout (NQ E-mini): 5m session bias + 1m consolidation value-area break, 2R. Ported from src/strategy."
+}

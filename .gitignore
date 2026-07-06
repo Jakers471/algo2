@@ -10,3 +10,6 @@ venv/
 experiments/engine/out/trades_cache_*.pkl
 experiments/engine/out/pipeline_run/
 experiments/engine/out/pipeline_bt_log.txt
+lean/*/backtests/
+lean/*/data/
+lean/data/
