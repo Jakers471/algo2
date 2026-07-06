@@ -1,0 +1,5 @@
+{
+    "algorithm-language": "CSharp",
+    "parameters": {},
+    "description": "VA breakout NQ Emini in C# - 5m session bias and 1m consolidation value area break at 2R. Port of lean/vabreakout for speed."
+}
