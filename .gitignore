@@ -17,3 +17,5 @@ lean/lean.json
 lean/.idea/
 lean/.vscode/
 lean/vabreakout/__pycache__/
+experiments/engine/out/pipeline_backtest.png
+experiments/engine/out/pipeline_val_log.txt
