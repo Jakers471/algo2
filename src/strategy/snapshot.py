@@ -20,6 +20,7 @@ from ..config import strategy_config
 from ..indicators.sessions import session_instances
 from ..indicators.volume import compute_volume
 from ..indicators.volume_profile import compute_volume_profile
+from .readings.consolidation import read_consolidation
 from .readings.structure import read_structure
 from .readings.volume import read_volume
 from .readings.volume_profile import read_volume_profile
@@ -38,6 +39,7 @@ class Snapshot:
     volume: dict | None = None           # time-based: bar / rvol / delta (per-bar)
     structure: dict | None = None        # GRADE @ L1 (5m session): state/strength/poc/vah/val
     structure_ltf: dict | None = None    # GRADE @ L2 (recent 1m window): same fields, finer scale
+    consolidation: dict | None = None    # L2 tradeable base: vah/val/poc/len/ended_ago (breakout levels)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -76,6 +78,8 @@ def build_snapshot(df: pd.DataFrame, symbol: str, tf: str,
     # L2 (fractal): same grade(), on the recent 1m window. Same computes, finer scale.
     structure_ltf_reading = (read_structure(ltf_df.tail(LTF_BARS))
                              if ltf_df is not None and not ltf_df.empty else None)
+    # L2 tradeable base: the current 1m CONSOLIDATION (breakout levels), if any.
+    consolidation_reading = read_consolidation(ltf_df) if ltf_df is not None else None
 
     return Snapshot(
         symbol=symbol,
@@ -86,4 +90,5 @@ def build_snapshot(df: pd.DataFrame, symbol: str, tf: str,
         volume=vol_reading,
         structure=structure_reading,
         structure_ltf=structure_ltf_reading,
+        consolidation=consolidation_reading,
     )

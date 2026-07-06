@@ -192,7 +192,7 @@ def _cw(label, w):
 
 
 def _inner(cols):
-    return 1 + sum(_cw(l, w) for l, w, _ in cols) + 2 * (len(cols) - 1) + 1
+    return 1 + sum(_cw(l, w) for l, w, _ in cols) + (len(cols) - 1) + 1
 
 
 def _cells(pairs, cols):
@@ -210,7 +210,7 @@ def _cells(pairs, cols):
             out.append(" " * cw)  # blank cell, width preserved
         else:
             out.append(c(format(sval, f"{a}{w}"), code))
-    return " " + "  ".join(out) + " "
+    return " " + " ".join(out) + " "
 
 
 def _assemble(bucket_strs, phases):
