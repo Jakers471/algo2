@@ -1,7 +1,7 @@
 {
     "algorithm-language": "CSharp",
     "parameters": {},
-    "description": "VA breakout NQ Emini in C# - 5m session bias and 1m consolidation value area break at 2R. Port of lean/vabreakout for speed.",
+    "description": "VA breakout NQ Emini CSharp port - 5m session bias and 1m consolidation value area break at 2R for speed",
     "cloud-id": 33808636,
     "organization-id": "8581ce9005239275a45e2fa0c9eec87b"
 }
