@@ -183,11 +183,19 @@ def _phase_cells(name, st):
                     (lvl(intent.get("entry")), WHT), (lvl(intent.get("stop")), RED),
                     (lvl(intent.get("target")), GRN)]
         return [("—", DIM), ("", WHT), ("", WHT), ("", WHT)]
-    # MANAGE
-    kind = action.get("kind") or ""
-    state = "" if kind in ("", "none") else kind
-    mcol = {"arm": YEL, "activate": GRN, "active": GRN, "exit": RED}.get(state, DIM)
-    return [(state or "—", mcol)]
+    # MANAGE — the trade lifecycle (from the book)
+    kind = action.get("kind") or "none"
+    d = action.get("detail") or {}
+    dr = (d.get("direction") or "").upper()
+    if kind == "activate":
+        return [(f"{dr} entered", GRN)]
+    if kind == "active":
+        u = d.get("unreal_R", 0.0)
+        return [(f"{dr} hold {u:+.1f}R", GRN if u >= 0 else RED)]
+    if kind == "exit":
+        R = d.get("R", 0.0)
+        return [(f"exit {d.get('reason','')} {R:+.1f}R", GRN if R > 0 else RED)]
+    return [("—", DIM)]
 
 
 # ---- horizontal / snapshot (bucketed grid) -------------------------------

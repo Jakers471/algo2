@@ -19,11 +19,12 @@ from dataclasses import dataclass, field
 
 from ..decide import Intent
 from ..snapshot import Snapshot
+from .book import Book
 
 
 @dataclass
 class Action:
-    """What to do with a trade this bar: 'none'|'arm'|'activate'|'adjust'|'exit'."""
+    """What to do with a trade this bar: 'none'|'arm'|'activate'|'active'|'exit'."""
     kind: str = "none"
     detail: dict = field(default_factory=dict)
 
@@ -32,8 +33,10 @@ class Action:
 
 
 class Manager:
-    """Interface: (Intent | None) + Snapshot -> Action."""
-    def manage(self, intent: "Intent | None", snap: Snapshot) -> Action:
+    """Interface: (Intent | None) + Snapshot + Book -> Action. The Manager reads and
+    MUTATES the persistent `book` (open position / traded bases / log); it is the one
+    stateful stage. A driver threads the same book across bars."""
+    def manage(self, intent: "Intent | None", snap: Snapshot, book: Book) -> Action:
         raise NotImplementedError
 
 

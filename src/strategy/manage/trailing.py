@@ -8,9 +8,10 @@ from __future__ import annotations
 from ..decide import Intent
 from ..snapshot import Snapshot
 from .base import Action, Manager, register_manager
+from .book import Book
 
 
 @register_manager("trailing")
 class TrailingManager(Manager):
-    def manage(self, intent: "Intent | None", snap: Snapshot) -> Action:
+    def manage(self, intent: "Intent | None", snap: Snapshot, book: Book) -> Action:
         return Action()
