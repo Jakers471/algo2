@@ -20,7 +20,8 @@ using QuantConnect;
 using QuantConnect.Data;
 using QuantConnect.Data.Consolidators;
 using QuantConnect.Data.Market;
-using QuantConnect.Securities.Future;
+using QuantConnect.Securities;         // Futures.Indices.NASDAQ100EMini lives here
+using QuantConnect.Securities.Future;  // the Future type
 
 namespace QuantConnect.Algorithm.CSharp
 {

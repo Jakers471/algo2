@@ -67,7 +67,8 @@ def _parquet(symbol, tf):
 
 
 def run_backtest(symbol="NQ", tf="5m", start="2024-12-01", end=None, max_sessions=None,
-                 ltf_tf="1m", commission_rt=4.0, slip_ticks=1.0, progress=False, save_dir=None) -> dict:
+                 ltf_tf="1m", commission_rt=4.0, slip_ticks=1.0, progress=False, save_dir=None,
+                 save_every=100) -> dict:
     """Step the Driver session-by-session over [start, end] -> trades + equity + stats.
 
     Costs (round turn): commission_rt $ + slip_ticks ticks/side -> fixed points, charged as
@@ -87,6 +88,9 @@ def run_backtest(symbol="NQ", tf="5m", start="2024-12-01", end=None, max_session
     if max_sessions:
         insts = insts[-max_sessions:]
     cost_pts = commission_rt / POINT_VALUE + slip_ticks * 2 * TICK
+    meta = {"symbol": symbol, "tf": tf, "start": start, "end": end,
+            "sessions": len(insts), "commission_rt": commission_rt,
+            "slip_ticks": slip_ticks, "cost_pts": round(cost_pts, 3)}
 
     trades, bars = [], []
     for si, inst in enumerate(insts):
@@ -123,13 +127,13 @@ def run_backtest(symbol="NQ", tf="5m", start="2024-12-01", end=None, max_session
             tr = dict(tr, session=inst["session"], date=date,
                       cost_R=round(cost_R, 3), R_net=round(tr["R"] - cost_R, 2))
             trades.append(tr)
+        # incremental checkpoint: a long overnight run can be interrupted without losing everything
+        if save_dir is not None and (si + 1) % save_every == 0:
+            _save(save_dir, _summarize(trades, cost_pts), bars, dict(meta, sessions_done=si + 1))
 
     result = _summarize(trades, cost_pts)
     if save_dir is not None:
-        _save(save_dir, result, bars,
-              meta={"symbol": symbol, "tf": tf, "start": start, "end": end,
-                    "sessions": len(insts), "commission_rt": commission_rt,
-                    "slip_ticks": slip_ticks, "cost_pts": round(cost_pts, 3)})
+        _save(save_dir, result, bars, dict(meta, sessions_done=len(insts)))
     return result
 
 
