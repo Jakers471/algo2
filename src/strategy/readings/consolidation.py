@@ -21,12 +21,36 @@ import sys
 _REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(_REPO, "experiments", "engine"))
 from grade import grade  # noqa: E402
-from anchors import rolling_states  # noqa: E402
 
 DET_WINDOW = 120     # recent 1m bars to scan
 STATE_WINDOW = 25    # rolling_states window (matches the backtest)
 MIN_LEN = 15         # min CONSOLIDATION length in bars (matches the backtest)
 MAX_AGE = 40         # ignore a base that ended > this many bars ago (gone stale)
+
+# PERF: a 1m bar's state = grade(its trailing 25-bar window).state — deterministic for a
+# fixed dataset, so we compute it ONCE and reuse it across every bar-step (instead of
+# re-grading the whole window each bar, the ~50x redundancy). Keyed by (window, bar-ts).
+# Bounded by clear_state_cache() (the runner clears per session; the server on rebuild).
+_STATE_CACHE: dict = {}
+
+
+def clear_state_cache() -> None:
+    _STATE_CACHE.clear()
+
+
+def _states_cached(win, window):
+    """Same result as rolling_states(win, window), but each bar's state is memoized by
+    timestamp so a sequence of overlapping windows only pays for the NEW bars."""
+    idx = win.index
+    states = [None] * len(win)
+    for i in range(window, len(win)):
+        key = (window, idx[i].value)
+        s = _STATE_CACHE.get(key)
+        if s is None:
+            s = grade(win.iloc[i - window:i + 1]).state
+            _STATE_CACHE[key] = s
+        states[i] = s
+    return states
 
 
 def _cons_runs(states, min_len):
@@ -49,7 +73,7 @@ def read_consolidation(ltf_df) -> dict | None:
     if ltf_df is None or len(ltf_df) < STATE_WINDOW + MIN_LEN:
         return None
     win = ltf_df.tail(DET_WINDOW)
-    states = rolling_states(win, STATE_WINDOW)
+    states = _states_cached(win, STATE_WINDOW)
     runs = _cons_runs(states, MIN_LEN)
     if not runs:
         return None

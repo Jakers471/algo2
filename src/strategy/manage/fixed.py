@@ -28,8 +28,9 @@ class FixedManager(Manager):
 
         if pos is not None:                                   # --- managing an open trade ---
             long = pos.direction == "long"
-            hit_stop = price <= pos.stop if long else price >= pos.stop
-            hit_tgt = price >= pos.target if long else price <= pos.target
+            hi, lo = snap.high, snap.low                       # intrabar (stop counts if touched)
+            hit_stop = lo <= pos.stop if long else hi >= pos.stop
+            hit_tgt = hi >= pos.target if long else lo <= pos.target
             if hit_stop or hit_tgt:
                 exit_px = pos.stop if hit_stop else pos.target
                 R = round((exit_px - pos.entry) / pos.risk * (1 if long else -1), 2)

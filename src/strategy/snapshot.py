@@ -34,6 +34,8 @@ class Snapshot:
     tf: str
     asof: int                            # Unix seconds (UTC) of the current bar
     price: float                         # last close
+    high: float = 0.0                    # current bar high (for intrabar stop/target)
+    low: float = 0.0                     # current bar low
     # --- readings (facts derived from raw indicators) ---
     volume_profile: dict | None = None   # forming session: session/poc/vah/val/volume
     volume: dict | None = None           # time-based: bar / rvol / delta (per-bar)
@@ -62,7 +64,9 @@ def build_snapshot(df: pd.DataFrame, symbol: str, tf: str,
         return None
 
     asof = int(df.index[-1].value // 1_000_000_000)
-    price = float(df["close"].iloc[-1])
+    last = df.iloc[-1]
+    price = float(last["close"])
+    high, low = float(last["high"]), float(last["low"])
 
     # [indicators] raw  ->  [readings] facts (reading knobs come from config)
     rcfg = strategy_config()["readings"]
@@ -86,6 +90,8 @@ def build_snapshot(df: pd.DataFrame, symbol: str, tf: str,
         tf=tf,
         asof=asof,
         price=price,
+        high=high,
+        low=low,
         volume_profile=vp_reading,
         volume=vol_reading,
         structure=structure_reading,

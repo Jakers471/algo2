@@ -54,13 +54,16 @@ if __name__ == "__main__":
     ap.add_argument("--sessions", type=int, default=0, help="cap to the last N sessions (0 = all in range)")
     ap.add_argument("--commission_rt", type=float, default=4.0)
     ap.add_argument("--slip_ticks", type=float, default=1.0)
-    ap.add_argument("--out", default=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__)))), "experiments", "engine", "out", "pipeline_backtest.png"))
+    _out = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__)))), "experiments", "engine", "out")
+    ap.add_argument("--out", default=os.path.join(_out, "pipeline_backtest.png"))
+    ap.add_argument("--save", nargs="?", const=os.path.join(_out, "pipeline_run"), default=None,
+                    help="save the full run (bars+trades+stats+meta); optional dir path")
     args = ap.parse_args()
 
     res = run_backtest(start=args.start, end=args.end,
                        max_sessions=(args.sessions or None),
                        commission_rt=args.commission_rt, slip_ticks=args.slip_ticks,
-                       progress=True)
+                       progress=True, save_dir=args.save)
     print_stats(res)
     print("\nwrote", equity_png(res, args.out))

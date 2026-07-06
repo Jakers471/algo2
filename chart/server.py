@@ -278,6 +278,8 @@ def _replay_pipeline():
             rebuild = (rd["driver"] is None or rd["sess_start"] != sess_start
                        or rd["asof"] is None or asof_ts < rd["asof"])
             if rebuild:
+                from src.strategy.readings.consolidation import clear_state_cache
+                clear_state_cache()             # bound the per-bar detection cache
                 rd["driver"] = strategy_pipeline.Driver()
                 rd["sess_start"] = sess_start
                 bars = d5.index[(d5.index >= sess_start) & (d5.index <= asof_ts)]
