@@ -1,0 +1,10 @@
+{
+  "symbol": "NQ",
+  "tf": "5m",
+  "start": "2024-01-01",
+  "end": null,
+  "sessions": 798,
+  "commission_rt": 4.0,
+  "slip_ticks": 1.0,
+  "cost_pts": 0.7
+}
