@@ -146,3 +146,30 @@ python experiments/engine/research/backtest_cont.py --sessions 300
 (+0.59R vs +0.35R) — trading breakouts *with* the session beats all breakouts, as the L1<->L2
 alignment predicted. CAVEATS: small sample (37), OPTIMISTIC fills (no slippage/commission),
 single parameter set. A strong hypothesis to harden (bigger sample + real costs), not a system.
+
+### `backtest_trades.py` — draw the real winners and losers (PNG)
+The same rule, but records each trade and plots a grid of winners (left) / losers (right):
+consolidation box, VAH/VAL, entry marker, stop (red), 2R target (green), exit. Shows the
+bimodal reality — winners follow through to +2R, losers are FALSE BREAKOUTS that reverse back
+through the value area to the stop. `out/backtest_trades.png`.
+```bash
+python experiments/engine/research/backtest_trades.py --sessions 200
+```
+
+### `backtest_equity.py` — MULTI-YEAR equity curve + management sweep (PNG)
+The rule over 5 years (all sessions since --start), drawn as a cumulative-R equity curve under
+four management variants: {2R, 3R} x {hard stop, breakeven-at-1R (stop -> entry once +1R hit)}.
+Same trade set across variants so the curves are comparable. `out/backtest_equity.png`.
+```bash
+python experiments/engine/research/backtest_equity.py --start 2020-01-01
+```
+**Result (5 years, 2020->2025, 530 trades):** the edge is DURABLE — every variant grinds up
+through COVID, the 2022 bear, and the 2024 bull, no multi-year dead zone. Honest larger-sample
+expectancy **+0.46R** (down from +0.59R on the 37-trade sample). Findings:
+- **2R beats 3R** — +0.46R / +243R / -6.7R DD vs 3R's +0.32R / +170R / -12.7R DD. Intraday
+  exit-at-close means price runs out of session before 3R too often; the wider target doesn't pay.
+- **Breakeven@1R is a wash on expectancy, a win on drawdown.** On 2R: identical money (+0.46R),
+  it just swaps ~half the losses for scratches (32% scratch) and clips some runners — net zero.
+  On 3R: it lifts expectancy (+0.36) and HALVES drawdown (-7 vs -12.7). Its real value is DD, not R.
+- **Best config = 2R**; hard stop (51% win) vs breakeven (smoother, fewer full losses) is preference.
+CAVEAT unchanged: optimistic fills; ~2 trades/week, a couple ticks of cost -> ~+0.38R, still positive.
