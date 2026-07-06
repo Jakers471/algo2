@@ -13,3 +13,7 @@ experiments/engine/out/pipeline_bt_log.txt
 lean/*/backtests/
 lean/*/data/
 lean/data/
+lean/lean.json
+lean/.idea/
+lean/.vscode/
+lean/vabreakout/__pycache__/

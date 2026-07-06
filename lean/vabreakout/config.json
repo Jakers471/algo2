@@ -1,5 +1,8 @@
 {
     "algorithm-language": "Python",
     "parameters": {},
-    "description": "VA-breakout (NQ E-mini): 5m session bias + 1m consolidation value-area break, 2R. Ported from src/strategy."
+    "description": "VA-breakout NQ E-mini - 5m session bias + 1m consolidation value-area break, 2R. Ported from src/strategy.",
+    "local-id": 807253309,
+    "cloud-id": 33805165,
+    "organization-id": "8581ce9005239275a45e2fa0c9eec87b"
 }
