@@ -8,9 +8,9 @@ Needs `dotnet` (any recent SDK) + the project's Python env.
 Don't optimize or edit `Vab` without re-passing this.
 
 ```bash
-python lean/vabreakout_cs/verify/export.py        # 1. dump 52 windows + Python-source expected -> input.json
+python tools/csverify/export.py        # 1. dump 52 windows + Python-source expected -> input.json
 cd lean/vabreakout_cs/verify && dotnet run -c Release   # 2. compile Vab + run it -> output.json  (also = the compile check)
-python lean/vabreakout_cs/verify/compare.py       # 3. diff -> "consolidation 52/52 · grade 52/52 · ALL MATCH"
+python tools/csverify/compare.py       # 3. diff -> "consolidation 52/52 · grade 52/52 · ALL MATCH"
 ```
 
 ## What it does

@@ -10,7 +10,7 @@ import json
 import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))   # verify -> vabreakout_cs -> lean -> repo
+REPO = os.path.dirname(os.path.dirname(HERE))                    # csverify -> tools -> repo
 sys.path.insert(0, os.path.join(REPO, "experiments", "engine"))
 sys.path.insert(0, os.path.join(REPO, "src", "strategy", "readings"))
 from grade import grade as gsrc                     # the frozen source of truth  # noqa: E402
