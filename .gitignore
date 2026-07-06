@@ -7,3 +7,4 @@ __pycache__/
 .venv/
 venv/
 .env
+experiments/engine/out/trades_cache_*.pkl
