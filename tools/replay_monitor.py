@@ -54,7 +54,7 @@ YEL, GRN, RED = "33", "32", "31"
 # Phase identity colors (borders / gutters / labels) — consistent across views.
 # The SNAPSHOT facts split into per-SOURCE boxes (PRICE / PROFILE / VOLUME) that
 # share the cyan family (they're all facts); the pipeline phases differ.
-PHASE_C = {"PRICE": "96", "PROFILE": "96", "VOLUME": "96", "SNAPSHOT": "96",
+PHASE_C = {"PRICE": "96", "PROFILE": "96", "VOLUME": "96", "STRUCTURE": "96", "SNAPSHOT": "96",
            "SCORE": "93", "DECIDE": "95", "MANAGE": "94"}
 SESS_C = {"Asia": "94", "London": "93", "NY": "95"}
 
@@ -115,6 +115,7 @@ PHASES = [
     ("PRICE",    [("", 14, "<"), ("px", 8, ">")]),
     ("PROFILE",  [("", 6, "<"), ("POC", 7, ">"), ("VAH", 7, ">"), ("VAL", 7, ">"), ("vol", 5, ">")]),
     ("VOLUME",   [("bar", 5, ">"), ("rvol", 4, ">"), ("vexp", 4, ">"), ("Δ", 6, ">")]),
+    ("STRUCTURE",[("", 13, "<"), ("str", 5, ">"), ("eff", 4, ">"), ("acc", 4, ">")]),
     ("SCORE",    [("conv", 4, ">"), ("trend", 4, ">"), ("brk", 4, ">"),
                   ("loc", 4, ">"), ("", 5, "<")]),
     ("DECIDE",   [("", 5, "<"), ("entry", 8, ">"), ("stop", 8, ">"), ("tgt", 8, ">")]),
@@ -122,7 +123,7 @@ PHASES = [
 ]
 
 # The fact boxes (left of the pipeline stages) — used by the 'snapshot' view.
-FACT_PHASES = 3
+FACT_PHASES = 4
 
 
 def _phase_cells(name, st):
@@ -143,6 +144,17 @@ def _phase_cells(name, st):
                 (f"{vr['rvol']:.1f}" if "rvol" in vr else "", WHT),        # relative volume
                 (f"{vr['vexp']:.1f}" if "vexp" in vr else "", WHT),        # volume expansion
                 (signed_vol(d), GRN if (d or 0) >= 0 else RED)]            # recent delta
+    if name == "STRUCTURE":                                      # GRADE engine (grade())
+        stc = snap.get("structure") or {}
+        state = stc.get("state", "")
+        scol = (GRN if state.endswith("UP") else RED if state.endswith("DN")
+                else YEL if state == "CONSOLIDATION" else DIM)   # regime tint
+        strg = stc.get("strength")
+        return [(state, scol),
+                (f"{strg:+.2f}" if strg is not None else "",
+                 GRN if (strg or 0) > 0 else RED if (strg or 0) < 0 else DIM),  # bias sign
+                (f"{stc['efficiency']:.2f}" if "efficiency" in stc else "", WHT),
+                (f"{stc['acceptance']:.2f}" if "acceptance" in stc else "", WHT)]
     if name == "SCORE":
         conv = sc.get("conviction", 0.0)
         sigs = sc.get("signals") or {}
@@ -317,12 +329,17 @@ def _legend() -> str:
         ("rvol", "relative volume = bar ÷ avg(last N bars); >1 = above average / spike"),
         ("vexp", "volume expansion = avg(fast bars) ÷ avg(N bars); rising = ramping up"),
         ("Δ", "delta = net signed volume over last N bars (+ buying / − selling)"),
+        ("state", "GRADE regime — IMPULSE/GRIND (±dir) / CONSOLIDATION / WHIPSAW / UNCLEAR"),
+        ("str", "strength = net ÷ range (−1..+1); the session-bias number (+ up / − down)"),
+        ("eff", "efficiency = |net| ÷ travel (0..1); how direct the path (progress axis)"),
+        ("acc", "acceptance = 1 − value-area fraction; fat POC reads high (acceptance axis)"),
     ]
     out = [c("FIELDS", "1") + c("  — what each output shows", DIM), "",
            c("SNAPSHOT", PHASE_C["SNAPSHOT"]) + c(" facts — boxed BY SOURCE: ", DIM) +
            c("PRICE", PHASE_C["PRICE"]) + c(" (the bar) · ", DIM) +
            c("PROFILE", PHASE_C["PROFILE"]) + c(" (volume-profile) · ", DIM) +
-           c("VOLUME", PHASE_C["VOLUME"]) + c(" (time-based volume)", DIM)]
+           c("VOLUME", PHASE_C["VOLUME"]) + c(" (time-based volume) · ", DIM) +
+           c("STRUCTURE", PHASE_C["STRUCTURE"]) + c(" (GRADE engine)", DIM)]
     for k, v in rows:
         out.append("  " + c(k.ljust(5), WHT) + " " + c(v, DIM))
     out += ["",
