@@ -15,7 +15,6 @@
  */
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using Newtonsoft.Json;
 using QuantConnect.Data;
 using QuantConnect.Data.Consolidators;
@@ -31,6 +30,10 @@ namespace QuantConnect.Algorithm.CSharp
         private readonly List<double> _o1 = new(), _h1 = new(), _l1 = new(), _c1 = new(), _v1 = new();
         private readonly List<string> _st1 = new();
         private readonly List<double> _o5 = new(), _h5 = new(), _l5 = new(), _c5 = new(), _v5 = new();
+        // reusable scratch arrays: copy a window in, pass a SAFE array-span to Vab (no CollectionsMarshal,
+        // no per-bar allocation). Sized past the max window (detection 120, session <=110).
+        private readonly double[] _so = new double[512], _sh = new double[512], _sl = new double[512],
+                                  _sc = new double[512], _sv = new double[512];
         private string _session = null;
         private HashSet<(double, double)> _traded = new();
         private Vab.Intent _pos;
@@ -65,9 +68,13 @@ namespace QuantConnect.Algorithm.CSharp
             foreach (var _ in slice.SymbolChangedEvents.Values)
                 if (_inPos) { Liquidate(); Record(_pos.Entry, "rollover"); _inPos = false; }
 
-            if (!slice.Bars.TryGetValue(_sym, out var bar) &&
-                !slice.Bars.TryGetValue(_future.Mapped, out bar))
-                return;
+            // Bar for our future. Guard the null Mapped (early bars) — C#'s TryGetValue(null) THROWS,
+            // where Python's dict.get(None) just returned None. This was the runtime crash.
+            if (!slice.Bars.TryGetValue(_sym, out var bar))
+            {
+                if (_future.Mapped == null || !slice.Bars.TryGetValue(_future.Mapped, out bar))
+                    return;
+            }
 
             if (!_gotBar) { _gotBar = true; Log($"{Time} data flowing on {bar.Symbol}"); }
 
@@ -75,13 +82,13 @@ namespace QuantConnect.Algorithm.CSharp
             _c1.Add((double)bar.Close); _v1.Add((double)bar.Volume);
 
             int n = _c1.Count;
-            if (n >= Vab.StateWindow + 1)   // grade the trailing 26-bar window once (zero-copy span)
+            if (n >= Vab.StateWindow + 1)   // grade the trailing 26-bar window once (safe scratch span)
             {
                 int s = n - (Vab.StateWindow + 1), len = Vab.StateWindow + 1;
-                _st1.Add(Vab.Grade(
-                    CollectionsMarshal.AsSpan(_o1).Slice(s, len), CollectionsMarshal.AsSpan(_h1).Slice(s, len),
-                    CollectionsMarshal.AsSpan(_l1).Slice(s, len), CollectionsMarshal.AsSpan(_c1).Slice(s, len),
-                    CollectionsMarshal.AsSpan(_v1).Slice(s, len)).State);
+                _o1.CopyTo(s, _so, 0, len); _h1.CopyTo(s, _sh, 0, len); _l1.CopyTo(s, _sl, 0, len);
+                _c1.CopyTo(s, _sc, 0, len); _v1.CopyTo(s, _sv, 0, len);
+                _st1.Add(Vab.Grade(_so.AsSpan(0, len), _sh.AsSpan(0, len), _sl.AsSpan(0, len),
+                                   _sc.AsSpan(0, len), _sv.AsSpan(0, len)).State);
             }
             else _st1.Add(null);
 
@@ -123,15 +130,17 @@ namespace QuantConnect.Algorithm.CSharp
             if (IsWarmingUp || _inPos) return;
             if (_o5.Count < Vab.MinBars || _c1.Count < Vab.StateWindow + Vab.MinLen) return;
 
-            double strength = Vab.Grade(
-                CollectionsMarshal.AsSpan(_o5), CollectionsMarshal.AsSpan(_h5), CollectionsMarshal.AsSpan(_l5),
-                CollectionsMarshal.AsSpan(_c5), CollectionsMarshal.AsSpan(_v5)).Strength;              // L1 bias
+            int sc = _o5.Count;                                                                       // L1 bias (session)
+            _o5.CopyTo(0, _so, 0, sc); _h5.CopyTo(0, _sh, 0, sc); _l5.CopyTo(0, _sl, 0, sc);
+            _c5.CopyTo(0, _sc, 0, sc); _v5.CopyTo(0, _sv, 0, sc);
+            double strength = Vab.Grade(_so.AsSpan(0, sc), _sh.AsSpan(0, sc), _sl.AsSpan(0, sc),
+                                        _sc.AsSpan(0, sc), _sv.AsSpan(0, sc)).Strength;
 
             int m = _c1.Count, lo = Math.Max(0, m - Vab.DetWindow), cnt = m - lo;                      // last 120 (L2)
+            _o1.CopyTo(lo, _so, 0, cnt); _h1.CopyTo(lo, _sh, 0, cnt); _l1.CopyTo(lo, _sl, 0, cnt);
+            _c1.CopyTo(lo, _sc, 0, cnt); _v1.CopyTo(lo, _sv, 0, cnt);
             var cons = Vab.FindConsolidation(_st1.GetRange(lo, cnt),
-                CollectionsMarshal.AsSpan(_o1).Slice(lo, cnt), CollectionsMarshal.AsSpan(_h1).Slice(lo, cnt),
-                CollectionsMarshal.AsSpan(_l1).Slice(lo, cnt), CollectionsMarshal.AsSpan(_c1).Slice(lo, cnt),
-                CollectionsMarshal.AsSpan(_v1).Slice(lo, cnt));
+                _so.AsSpan(0, cnt), _sh.AsSpan(0, cnt), _sl.AsSpan(0, cnt), _sc.AsSpan(0, cnt), _sv.AsSpan(0, cnt));
 
             var intent = Vab.Decide(strength, cons, (double)bar.Close);
             if (!intent.Valid) return;
@@ -143,6 +152,7 @@ namespace QuantConnect.Algorithm.CSharp
 
         private void Enter(Vab.Intent intent)
         {
+            if (_future.Mapped == null) return;                 // no tradable contract yet
             MarketOrder(_future.Mapped, intent.Direction == "long" ? 1 : -1);
             _pos = intent; _inPos = true; _entries++;
         }
