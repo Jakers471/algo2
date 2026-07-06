@@ -34,7 +34,8 @@ class FixedManager(Manager):
                 exit_px = pos.stop if hit_stop else pos.target
                 R = round((exit_px - pos.entry) / pos.risk * (1 if long else -1), 2)
                 book.log.append({"direction": pos.direction, "entry": pos.entry,
-                                 "exit": exit_px, "R": R, "reason": "stop" if hit_stop else "target",
+                                 "exit": exit_px, "risk": pos.risk, "R": R,
+                                 "reason": "stop" if hit_stop else "target",
                                  "opened_asof": pos.opened_asof, "closed_asof": snap.asof})
                 book.position = None
                 return Action("exit", {"direction": pos.direction, "exit": exit_px,
