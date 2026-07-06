@@ -11,6 +11,7 @@ v2: session timing off the algo clock (not the bar's tz), flatten on contract ro
 robust bar access, and diagnostic logging. Short debug range — expand once it looks right.
 """
 from AlgorithmImports import *
+import json
 import numpy as np
 
 from grade_lib import (grade, state_of, find_consolidation, decide,
@@ -52,6 +53,7 @@ class VaBreakout(QCAlgorithm):
         self._traded = set()
         self._pos = None
         self._diag = {"got_bar": False, "trades": 0}     # one-time diagnostics
+        self._trades = []                                # closed-trade log (checkpointed)
 
         self.set_warm_up(timedelta(days=3))
 
@@ -59,8 +61,9 @@ class VaBreakout(QCAlgorithm):
     def on_data(self, slice):
         for _ in slice.symbol_changed_events.values():        # contract rollover -> go flat
             if self._pos is not None:
-                self.liquidate(); self._pos = None
-                self.log(f"{self.time} ROLLOVER flat")
+                self.liquidate()
+                self._record(self._pos, self._pos["entry"], "rollover")   # R~0, rare
+                self._pos = None
 
         bar = slice.bars.get(self._sym) or slice.bars.get(self._future.mapped)
         if bar is None:
@@ -88,7 +91,8 @@ class VaBreakout(QCAlgorithm):
         hit_tgt = bar.high >= p["target"] if long else bar.low <= p["target"]
         if hit_stop or hit_tgt:
             self.liquidate(self._future.mapped)
-            self.log(f"{self.time} EXIT {'stop' if hit_stop else 'target'} {p['direction']}")
+            exit_px = p["stop"] if hit_stop else p["target"]
+            self._record(p, exit_px, "stop" if hit_stop else "target")
             self._pos = None
 
     # ---- 5m stream: session bias + decide + entry ----
@@ -97,7 +101,7 @@ class VaBreakout(QCAlgorithm):
         if sess != self._session:
             if self._pos is not None:
                 self.liquidate(self._future.mapped)           # flat at session close (intraday)
-                self.log(f"{self.time} SESSION-FLAT {self._pos['direction']}")
+                self._record(self._pos, bar.close, "session_close")
                 self._pos = None
             self.log(f"{self.time} -> session {sess}  (5m={len(self._b5)} 1m={len(self._b1)})")
             self._session, self._b5, self._traded = sess, [], set()
@@ -131,5 +135,33 @@ class VaBreakout(QCAlgorithm):
         self.log(f"{self.time} ENTER {intent['direction']} @{intent['entry']:.1f} "
                  f"stop {intent['stop']:.1f} tgt {intent['target']:.1f}")
 
+    # ---- checkpointing: persist trades so a dropped connection never loses the run ----
+    def _record(self, p, exit_px, reason):
+        """Log a closed trade + checkpoint the whole trade list to the ObjectStore (which
+        survives even if the backtest is discarded). R is vs the trade's own risk."""
+        risk = abs(p["entry"] - p["stop"]) or 1e-9
+        R = round((exit_px - p["entry"]) / risk * (1 if p["direction"] == "long" else -1), 3)
+        self._trades.append({"time": str(self.time), "direction": p["direction"],
+                             "entry": p["entry"], "stop": p["stop"], "target": p["target"],
+                             "exit": exit_px, "reason": reason, "R": R})
+        self._checkpoint()
+
+    def _checkpoint(self):
+        n = len(self._trades)
+        wins = sum(1 for t in self._trades if t["R"] > 0)
+        total = round(sum(t["R"] for t in self._trades), 2)
+        self.log(f"{self.time} EXIT {self._trades[-1]['reason']} {self._trades[-1]['R']:+.2f}R  "
+                 f"| running: {n} trades, {wins}/{n} win, {total:+.1f}R")
+        try:
+            self.object_store.save("vabreakout_trades.json", json.dumps(self._trades))
+        except Exception as e:
+            self.debug(f"objectstore save failed: {e}")
+
     def on_end_of_algorithm(self):
-        self.log(f"DONE — entries fired: {self._diag['trades']}, ever got a bar: {self._diag['got_bar']}")
+        self._checkpoint() if self._trades else None
+        n = len(self._trades); wins = sum(1 for t in self._trades if t["R"] > 0)
+        total = round(sum(t["R"] for t in self._trades), 2)
+        wr = (wins / n) if n else 0.0
+        self.log(f"DONE — {n} trades, {wr:.0%} win, {total:+.1f}R total  "
+                 f"(entries fired {self._diag['trades']}, got bar {self._diag['got_bar']})")
+        self.log("trades saved to ObjectStore key: vabreakout_trades.json")
