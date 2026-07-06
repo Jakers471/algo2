@@ -154,10 +154,7 @@ class VaBreakout(QCAlgorithm):
         total = round(sum(t["R"] for t in self._trades), 2)
         self.log(f"{self.time} EXIT {self._trades[-1]['reason']} {self._trades[-1]['R']:+.2f}R  "
                  f"| running: {n} trades, {wins}/{n} win, {total:+.1f}R")
-        try:
-            self.object_store.save("vabreakout_trades.json", json.dumps(self._trades))
-        except Exception as e:
-            self.debug(f"objectstore save failed: {e}")
+        self.object_store.save("vabreakout_trades.json", json.dumps(self._trades))
 
     def on_end_of_algorithm(self):
         self._checkpoint() if self._trades else None
