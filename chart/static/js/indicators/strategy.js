@@ -23,6 +23,24 @@
     return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`;
   }
 
+  // Entry marker: a bold direction-colored triangle (up=LONG green, down=SHORT red) with
+  // a light outline so it reads clearly even when it overlaps the win/loss connector line.
+  // Placed just OUTSIDE the entry (above a short, below a long) so it never hides behind
+  // the line and direction is obvious at a glance.
+  function entryMarker(ctx, x, y, long) {
+    const s = 7;
+    const cy = long ? y + s + 2 : y - s - 2;   // long marker sits below entry, short above
+    ctx.beginPath();
+    if (long) { ctx.moveTo(x, cy - s); ctx.lineTo(x - s, cy + s); ctx.lineTo(x + s, cy + s); }
+    else { ctx.moveTo(x, cy + s); ctx.lineTo(x - s, cy - s); ctx.lineTo(x + s, cy - s); }
+    ctx.closePath();
+    ctx.fillStyle = long ? LONG : SHORT;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(240,240,235,0.95)';   // light rim — separates it from the line
+    ctx.stroke();
+  }
+
   // The replay book (from /api/replay/state) -> drawable trades: the open position (live,
   // no exit yet) + the last closed trade. book.to_dict exposes exactly these two.
   function bookToTrades(st) {
@@ -99,12 +117,7 @@
             if (ys !== null) { ctx.strokeStyle = rgba(SHORT, 0.7); ctx.beginPath(); ctx.moveTo(xe, ys); ctx.lineTo(xNow, ys); ctx.stroke(); }
             if (yt !== null) { ctx.strokeStyle = rgba(WIN, 0.7); ctx.beginPath(); ctx.moveTo(xe, yt); ctx.lineTo(xNow, yt); ctx.stroke(); }
             ctx.restore();
-            ctx.fillStyle = long ? LONG : SHORT;
-            ctx.beginPath();
-            const so = 5;
-            if (long) { ctx.moveTo(xe, ye - so); ctx.lineTo(xe - so, ye + so); ctx.lineTo(xe + so, ye + so); }
-            else { ctx.moveTo(xe, ye + so); ctx.lineTo(xe - so, ye - so); ctx.lineTo(xe + so, ye - so); }
-            ctx.closePath(); ctx.fill();
+            entryMarker(ctx, xe, ye, long);
             continue;
           }
 
@@ -128,23 +141,18 @@
             ctx.restore();
           }
 
-          // --- entry marker (triangle: up for long, down for short) ---
-          const dcol = long ? LONG : SHORT;
-          ctx.fillStyle = dcol;
-          ctx.beginPath();
-          const s = 5;
-          if (long) { ctx.moveTo(xe, ye - s); ctx.lineTo(xe - s, ye + s); ctx.lineTo(xe + s, ye + s); }
-          else { ctx.moveTo(xe, ye + s); ctx.lineTo(xe - s, ye - s); ctx.lineTo(xe + s, ye - s); }
-          ctx.closePath(); ctx.fill();
+          // --- entry marker (up=long green, down=short red, light rim) ---
+          entryMarker(ctx, xe, ye, long);
 
-          // --- exit marker + R label ---
+          // --- exit marker + R label (dot with a light rim, matching the entry) ---
           if (xx !== null && yx !== null) {
-            ctx.fillStyle = rgba(tr.R > 0 ? WIN : LOSS, 0.95);
-            ctx.beginPath(); ctx.arc(xx, yx, 3.5, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = TEXT;
-            ctx.font = '10px -apple-system, system-ui, sans-serif';
+            ctx.beginPath(); ctx.arc(xx, yx, 4, 0, Math.PI * 2);
+            ctx.fillStyle = rgba(tr.R > 0 ? WIN : LOSS, 0.95); ctx.fill();
+            ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(240,240,235,0.95)'; ctx.stroke();
+            ctx.fillStyle = tr.R > 0 ? WIN : LOSS;
+            ctx.font = '600 10px -apple-system, system-ui, sans-serif';
             ctx.textBaseline = 'middle';
-            ctx.fillText(`${tr.R > 0 ? '+' : ''}${tr.R.toFixed(1)}R`, xx + 6, yx);
+            ctx.fillText(`${tr.R > 0 ? '+' : ''}${tr.R.toFixed(1)}R`, xx + 7, yx);
           }
         }
       });
