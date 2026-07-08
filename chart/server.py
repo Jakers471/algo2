@@ -14,7 +14,12 @@ results to the frontend. The JS just renders what it gets.
 All `time` fields are Unix seconds (UTC). The API returns the most recent LIMIT
 bars per timeframe (10,000) by default.
 
-Run:  python chart/server.py   (then open http://127.0.0.1:5000)
+Run:  python chart/server.py             (then open http://127.0.0.1:5000)
+      python chart/server.py --restart   (stop an already-running one and take over)
+
+Only ONE server per port: if one is already running, startup refuses (so you don't
+stack duplicates) and points you at it — or `--restart` stops it and starts fresh. The
+per-request access log is silenced so the terminal stays clean and Ctrl-C is easy.
 """
 import os
 import re
@@ -49,6 +54,11 @@ app = Flask(__name__, static_folder="static", static_url_path="/static")
 # Dev server: never let the browser cache anything, so a plain refresh (F5)
 # always pulls the latest chart.html / JS / CSS — no hard-refresh needed.
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+# Silence Werkzeug's per-request log line. The chart fetches many indicators and the
+# replay monitor polls 10x/s, so the default access log floods the terminal (and buries
+# Ctrl-C). Errors/warnings still show; our own [replay] prints still show.
+import logging  # noqa: E402
+logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
 
 @app.after_request
@@ -403,5 +413,85 @@ def api_replay_state():
     return jsonify(resp)
 
 
+def _port_in_use(port):
+    """True if something is already listening on 127.0.0.1:<port>."""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(("127.0.0.1", port))
+            return False
+        except OSError:
+            return True
+
+
+def _pids_on_port(port):
+    """PIDs LISTENING on <port> (Windows: netstat; POSIX: lsof if present)."""
+    import subprocess
+    pids = set()
+    try:
+        if sys.platform.startswith("win"):
+            out = subprocess.run(["netstat", "-ano"], capture_output=True, text=True).stdout
+            for line in out.splitlines():
+                if f":{port} " in line and "LISTENING" in line:
+                    pids.add(line.split()[-1])
+        else:
+            out = subprocess.run(["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"],
+                                 capture_output=True, text=True).stdout
+            pids.update(p for p in out.split() if p)
+    except Exception:
+        pass
+    return pids
+
+
+def _kill(pids):
+    import subprocess
+    for pid in pids:
+        try:
+            if sys.platform.startswith("win"):
+                subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
+            else:
+                os.kill(int(pid), 9)
+        except Exception:
+            pass
+
+
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    import argparse
+    import time as _time
+    ap = argparse.ArgumentParser(description="volume_profile_algo chart server")
+    ap.add_argument("--port", type=int, default=5000)
+    ap.add_argument("--restart", action="store_true",
+                    help="if a server is already on the port, stop it and start fresh (no prompt)")
+    args = ap.parse_args()
+
+    # One server per port. If one's already up, don't silently stack a second — offer to
+    # replace it (interactive), honor --restart, else refuse and point at the running one.
+    if _port_in_use(args.port):
+        pids = _pids_on_port(args.port)
+        who = f" (PID {', '.join(sorted(pids))})" if pids else ""
+        print(f"[!] A chart server is already running on http://127.0.0.1:{args.port}{who}")
+        replace = args.restart
+        if not replace and sys.stdin.isatty():
+            try:
+                replace = input("    Shut it down and restart here? [y/N] ").strip().lower() in ("y", "yes")
+            except EOFError:
+                replace = False        # no interactive input available -> don't stack a second
+        if not replace:
+            print(f"    Not starting a second one. Use the one at http://127.0.0.1:{args.port},")
+            print("    or re-run with --restart to replace it.")
+            sys.exit(1)
+        _kill(pids)
+        for _ in range(25):                       # wait for the port to actually free
+            if not _port_in_use(args.port):
+                break
+            _time.sleep(0.2)
+        print("    Old server stopped. Starting fresh...")
+
+    # Hide Flask's " * Serving Flask app / Debug mode" banner — keep the terminal clean.
+    try:
+        import flask.cli
+        flask.cli.show_server_banner = lambda *a, **k: None
+    except Exception:
+        pass
+    print(f"[>] chart server: http://127.0.0.1:{args.port}   (Ctrl-C to stop)", flush=True)
+    app.run(host="127.0.0.1", port=args.port, debug=False)

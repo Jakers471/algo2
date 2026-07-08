@@ -6,6 +6,13 @@ All notable changes to this project. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Chart server: one-per-port guard + quiet logs.** Starting `chart/server.py` when one is already
+  running no longer silently stacks a second (the cause of duplicate servers piling up — killing the
+  terminal doesn't always kill the python process). Startup now detects a listener on the port and
+  refuses, pointing at the running one; `--restart` stops the old one (taskkill/lsof) and starts fresh;
+  an interactive run offers a y/N prompt. Werkzeug's per-request access log is silenced (the chart +
+  10 Hz replay-monitor polls were flooding the terminal and burying Ctrl-C) and Flask's startup banner
+  is hidden — the terminal now shows one clean line.
 - **Strategy overlay on the chart — the tune-and-see loop.** The pipeline's output is now drawn
   ON the chart, not just the terminal monitor. New `/api/strategy` endpoint runs the whole pipeline
   across the loaded range (a fresh `Driver` stepped bar-by-bar — same brain as replay/live) and
