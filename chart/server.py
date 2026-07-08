@@ -37,6 +37,7 @@ DATA_DIR = os.path.join(REPO_ROOT, "data")
 sys.path.insert(0, REPO_ROOT)
 from src import config as algo_config  # noqa: E402
 from src.indicators.sessions import compute_sessions, session_instances  # noqa: E402
+from src.indicators.session_structure import compute_session_structure  # noqa: E402
 from src.indicators.volume_profile import compute_volume_profile  # noqa: E402
 from src.indicators.range_hop import compute_range_hop  # noqa: E402  (TEMP experiment)
 from src.indicators.volume import compute_volume  # noqa: E402
@@ -175,6 +176,18 @@ def api_sessions():
         return parsed
     symbol, tf, limit = parsed
     result = compute_sessions(_asof_slice(_load_df(symbol, tf, limit)))
+    return jsonify(symbol=symbol, tf=tf, **result)
+
+
+@app.route("/api/indicators/session_structure")
+def api_session_structure():
+    """Per-session raw + swing (BOS) structural high/low. Honors `asof` so it's live
+    in replay (same math on the growing slice)."""
+    parsed = _request_params()
+    if len(parsed) == 2:
+        return parsed
+    symbol, tf, limit = parsed
+    result = compute_session_structure(_asof_slice(_load_df(symbol, tf, limit)))
     return jsonify(symbol=symbol, tf=tf, **result)
 
 

@@ -5,6 +5,32 @@ dated + timed and terse (≤50 lines). Split into `notes/` when this gets large.
 
 ---
 
+## 2026-07-07 23:xx — Session structure (raw + swing/BOS H/L) in replay
+
+**Ask:** Jake wanted the *structural* high & low of each session available in replay — both the
+**raw** session H/L and the **swing** (structure-defining) H/L. Clarified: swing = **last confirmed
+swing** (BOS-style), shown in **both** the snapshot (terminal monitor) and a **chart overlay**, all
+config-driven.
+
+**Reuse, not reinvent:** raw H/L already existed (`session_instances` computes hi/lo); swing detection
+already existed (`experiments/engine/legs.zigzag`, the same detector the L2 base uses). So this was
+mostly *wiring*, not new math. On the knob: Jake flagged we already had `swing_frac` — right. Since it's
+a *price-fraction* threshold (`swing_frac × session range`), it's scale-invariant, so I **reused
+`strategy.consolidation.swing_frac`** for the session swings too (one swing definition everywhere) — **no
+new knob**. Coupling noted in the README.
+
+**Built (one source of truth → 3 consumers):** `src/indicators/session_structure.py`
+(`structure_of()` = raw extremes + last-confirmed swing H/L via zigzag, dropping the forming pivot;
+`compute_session_structure()` per session). Then: reading `readings/session_structure.py` → new
+`Snapshot.session_structure` field (additive, no contract break) → monitor `SESS H/L` box (H/L raw,
+sH/sL swing); endpoint `/api/indicators/session_structure` (honors `asof` → live in replay); renderer
+`session_structure.js` (raw = solid span lines, swing = dashed BOS levels + pivot dots, per-session
+toggles, default off). Distinct from Sessions H/L (retest rays) — this is the *structural* read.
+
+**Verified:** math + snapshot + endpoint(asof-correct: all sessions end ≤ asof) + monitor row all smoke-
+tested green. Swing levels sit inside the raw extremes (sanity). Chart renderer follows the sessions.js
+pattern (untested in-browser). See [[strategy-pipeline-architecture]], [[va-breakout-graduation]].
+
 ## 2026-07-07 18:xx — Strategy knobs → config (step 1 of the tune-and-see loop)
 
 **Context:** Jake's real goal for the strategy is a tight *tune-and-see* loop — nudge a

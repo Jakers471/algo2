@@ -28,6 +28,19 @@ All notable changes to this project. Format loosely follows
   "reconnected" on recovery. Fixes the flapping in `--view horizontal`.
 
 ### Added
+- **Session structure (raw + swing/BOS high & low) — a new indicator, in the Snapshot and on the
+  chart, live in replay.** New pure math `src/indicators/session_structure.py`: per session it derives
+  the RAW high/low (extreme wicks) *and* the last CONFIRMED swing-high/low (BOS levels) from the
+  threshold zigzag (`experiments/engine/legs.zigzag`), reusing the **existing**
+  `strategy.consolidation.swing_frac` threshold (`swing_frac × session range`) so a "swing" is the same
+  scale-invariant reversal at the 5m session scale as at the L2 1m scale — no new knob. Wired three ways
+  off the one source of truth: (1) reading `src/strategy/readings/session_structure.py` → new
+  `Snapshot.session_structure` field (additive; the replay monitor shows a new `SESS H/L` fact box —
+  H/L raw, sH/sL swing); (2) endpoint `/api/indicators/session_structure` (honors `asof`, so it's live
+  in replay); (3) renderer `chart/static/js/indicators/session_structure.js` ("Session Structure",
+  per-session toggles, default off) draws raw H/L as solid session-span lines and swing H/L as dashed
+  BOS levels + pivot dots. Distinct from the Sessions H/L indicator (retest rays) — this is the
+  structural read the strategy consumes.
 - **Chart server: one-per-port guard + quiet logs.** Starting `chart/server.py` when one is already
   running no longer silently stacks a second (the cause of duplicate servers piling up — killing the
   terminal doesn't always kill the python process). Startup now detects a listener on the port and

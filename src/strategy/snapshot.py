@@ -21,6 +21,7 @@ from ..indicators.sessions import session_instances
 from ..indicators.volume import compute_volume
 from ..indicators.volume_profile import compute_volume_profile
 from .readings.consolidation import read_consolidation
+from .readings.session_structure import read_session_structure
 from .readings.structure import read_structure
 from .readings.volume import read_volume
 from .readings.volume_profile import read_volume_profile
@@ -42,6 +43,7 @@ class Snapshot:
     structure: dict | None = None        # GRADE @ L1 (5m session): state/strength/poc/vah/val
     structure_ltf: dict | None = None    # GRADE @ L2 (recent 1m window): same fields, finer scale
     consolidation: dict | None = None    # L2 tradeable base: vah/val/poc/len/ended_ago (breakout levels)
+    session_structure: dict | None = None  # session's raw + swing (BOS) high/low levels
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -96,6 +98,10 @@ def build_snapshot(df: pd.DataFrame, symbol: str, tf: str,
             ltf_window = ltf_df.tail(LTF_BARS)      # no session yet -> recent 1m fallback
         consolidation_reading = read_consolidation(ltf_window, cfg=cons_cfg, grade_cfg=regime_cfg)
 
+    # SESSION STRUCTURE: raw + swing (BOS) high/low of the CURRENT 5m session — the
+    # same session bars L1 grades. Reuses the shared swing threshold (consolidation.swing_frac).
+    session_structure_reading = read_session_structure(sess_bars, swing_frac=cons_cfg["swing_frac"]) if insts else None
+
     return Snapshot(
         symbol=symbol,
         tf=tf,
@@ -108,4 +114,5 @@ def build_snapshot(df: pd.DataFrame, symbol: str, tf: str,
         structure=structure_reading,
         structure_ltf=structure_ltf_reading,
         consolidation=consolidation_reading,
+        session_structure=session_structure_reading,
     )

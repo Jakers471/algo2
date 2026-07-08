@@ -302,6 +302,11 @@ makes the same `swing_frac` carve legs correctly in a wide day and a tight day
 - **`swing_frac: 0.20`** — leg size. The zigzag reversal threshold as a fraction of the
   session range. *Bigger* → fewer, larger legs (coarser structure); *smaller* → more, finer
   legs. (On NQ: 0.10 ≈ 90 legs/window, 0.20 ≈ 14, 0.40 ≈ 4.) The single most important base knob.
+  **Shared:** the **Session Structure** indicator/reading (`src/indicators/session_structure.py`,
+  `Snapshot.session_structure`, the chart's *Session Structure* overlay, the monitor's `SESS H/L` box)
+  reuses this same threshold to find each session's swing (BOS) high/low on the 5m session — one
+  scale-invariant swing definition everywhere. Nudging `swing_frac` moves *both* the L2 base legs and
+  the session swing levels.
 - **`base_method: grade_state`** — **how a leg is judged a base. Swap this to A/B two definitions:**
   - **`grade_state`** — a base iff `grade(leg).state == CONSOLIDATION`. Reuses the `regime`
     cutoffs above (`e_cut`/`a_cut`), so there is **one** definition of "consolidation" at every
