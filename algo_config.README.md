@@ -272,32 +272,54 @@ Tuning cheat-sheet:
 | bigger `n_rows` | finer profile; small shifts in POC / acceptance |
 | bigger `min_bars` | more early windows read UNCLEAR (waits for evidence) |
 
-### `consolidation` — the L2 tradeable-base detector
+### `consolidation` — the L2 base detector (leg-based, fractal)
 
 ```yaml
 strategy:
   consolidation:
-    det_window: 120
-    state_window: 25
-    min_len: 15
+    swing_frac: 0.20
+    base_method: grade_state    # grade_state | va_frac
+    va_thr: 0.55
+    min_leg_len: 5
     max_age: 40
 ```
 
-Finds the recent 1-minute **CONSOLIDATION** whose value-area edges (VAH/VAL) become the
-breakout levels the decider trades. It rolls GRADE over recent 1m bars, keeps the most
-recent CONSOLIDATION run, and grades it for VAH/VAL.
+Finds the 1-minute **consolidation base** whose value-area edges (VAH/VAL) become the
+breakout levels the decider trades — the **fractal** way, the same anchor+measurement
+pattern as L1:
 
-- **`det_window: 120`** — how many recent 1m bars to scan for a base (≈ 2 hours).
-- **`state_window: 25`** — the rolling window (in bars) GRADE uses to label **each** 1m
-  bar's regime while scanning. Bigger = smoother per-bar state, slower to flip.
-- **`min_len: 15`** — the minimum run length (bars) of consecutive CONSOLIDATION to count as
-  a real base. Raise it to demand tighter, longer bases (fewer, higher-quality setups).
-- **`max_age: 40`** — ignore a base that *ended* more than this many bars ago (it's stale —
-  the breakout window has passed).
+> **L1** (`structure`) grades the **session** (the clock-given container). **L2** (here)
+> grades each **leg** *within* the session (the structure-detected container). Same
+> `grade()`, one scale down. A leg with a fat POC / narrow value area is a RANGE = a
+> consolidation base. (This replaced an older rolling-window run-detector that wasn't
+> leg-based — it's why this section's knobs changed shape.)
 
-> These use the same `regime` cutoffs above (the per-bar state comes from `grade()`), so a
-> regime change also reshapes what counts as a base. The per-bar state cache is keyed by the
-> regime knobs, so editing either section recomputes cleanly — never stale.
+A **leg** is a swing (a threshold zigzag): price runs, then only reverses once it retraces
+by `swing_frac × the session's range`. Tying the threshold to the session range is what
+makes the same `swing_frac` carve legs correctly in a wide day and a tight day
+(scale-invariant) — see `experiments/engine/legs.py`.
+
+- **`swing_frac: 0.20`** — leg size. The zigzag reversal threshold as a fraction of the
+  session range. *Bigger* → fewer, larger legs (coarser structure); *smaller* → more, finer
+  legs. (On NQ: 0.10 ≈ 90 legs/window, 0.20 ≈ 14, 0.40 ≈ 4.) The single most important base knob.
+- **`base_method: grade_state`** — **how a leg is judged a base. Swap this to A/B two definitions:**
+  - **`grade_state`** — a base iff `grade(leg).state == CONSOLIDATION`. Reuses the `regime`
+    cutoffs above (`e_cut`/`a_cut`), so there is **one** definition of "consolidation" at every
+    scale. Stricter: also requires low efficiency (genuinely choppy, not just concentrated).
+  - **`va_frac`** — a base iff the leg's value-area fraction `< va_thr`. The archived
+    `leg_profiles` rule: value concentration only, ignores efficiency. Looser → many more bases.
+- **`va_thr: 0.55`** — *(only used when `base_method: va_frac`)* the value-area fraction below
+  which a leg counts as a base. Lower = demand a tighter/fatter POC (fewer bases).
+- **`min_leg_len: 5`** — ignore legs shorter than this many bars (too small to be a real base).
+- **`max_age: 40`** — ignore a base whose leg *ended* more than this many bars ago (stale — the
+  breakout window has passed).
+
+> Either method takes the **levels** (VAH/VAL/POC) from `grade(leg)`, so they never disagree
+> with the regime engine — only the base *test* differs. The leg grades are cached keyed by the
+> `regime` knobs, so editing `regime` **or** `consolidation` recomputes cleanly — never stale.
+>
+> `grade_state` vs `va_frac` are genuinely different strategies (very different base counts and
+> trade frequency) — flip `base_method` and re-check the chart/backtest to compare.
 
 ### `decide` — the va_breakout entry rule
 

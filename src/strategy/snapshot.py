@@ -85,9 +85,16 @@ def build_snapshot(df: pd.DataFrame, symbol: str, tf: str,
     # L2 (fractal): same grade(), on the recent 1m window. Same computes, finer scale.
     structure_ltf_reading = (read_structure(ltf_df.tail(LTF_BARS), grade_cfg=regime_cfg)
                              if ltf_df is not None and not ltf_df.empty else None)
-    # L2 tradeable base: the current 1m CONSOLIDATION (breakout levels), if any.
-    consolidation_reading = (read_consolidation(ltf_df, cfg=cons_cfg, grade_cfg=regime_cfg)
-                             if ltf_df is not None else None)
+    # L2 tradeable base: legs within the CURRENT SESSION's 1m bars (the session is the L1
+    # container, so legs are graded inside it — same anchor logic as L1, finer scale).
+    consolidation_reading = None
+    if ltf_df is not None and not ltf_df.empty:
+        if insts:
+            sess_start_ts = df.index[insts[-1]["start_pos"]]
+            ltf_window = ltf_df.loc[ltf_df.index >= sess_start_ts]
+        else:
+            ltf_window = ltf_df.tail(LTF_BARS)      # no session yet -> recent 1m fallback
+        consolidation_reading = read_consolidation(ltf_window, cfg=cons_cfg, grade_cfg=regime_cfg)
 
     return Snapshot(
         symbol=symbol,

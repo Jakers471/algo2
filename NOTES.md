@@ -36,6 +36,34 @@ regime/consol/trades) + a chart overlay renderer → the loop exists. Perf follo
 `config.load()` by file mtime (avoid a YAML read per bar); make the 120k 1m slice
 positional (kill the per-bar mask).
 
+## 2026-07-07 21:xx — L2 base made truly fractal (leg-based) + engine dir restore
+
+**Trigger:** Jake looked at `experiments/archive/layer2/leg_profiles.png` and called out that
+the 1m base didn't feel like a real fractal reading — `det_window/state_window/min_len/max_age`
+are detection tuning, not structure. Correct: L1 grades the SESSION (a natural anchor); the old
+L2 used a *third* method (rolling-window CONSOLIDATION-run detector, mirroring
+`backtest_equity.collect()`), not legs. So it was "same measurement, different anchoring."
+
+**Decision — Option A (the picture Jake always wanted):** L2 = grade() each **swing leg** within
+the session, exactly like the archived `leg_profiles`. Legs = threshold zigzag; threshold =
+`swing_frac × session range` (Jake's pick — scale-invariant, couples L2 to its L1 container).
+Base judged by a **config-selectable** method (Jake wanted to A/B both): `grade_state`
+(`grade(leg).state==CONSOLIDATION`, reuses regime cutoffs — one regime def everywhere) vs
+`va_frac` (archived value-area rule + `va_thr`). Levels always from `grade(leg)`.
+
+**Did:** new `experiments/engine/legs.py` (ported zigzag, pure). Rewrote `readings/consolidation.py`
+(leg scan, method switch, leg-grade cache keyed by regime knobs). `build_snapshot` slices the
+session's 1m bars as the leg window. New `strategy.consolidation` knobs in config + README; kept
+the `snapshot.consolidation` field name (no contract break). Bounded Driver smoke: both methods
+fire (grade_state strict = few bases; va_frac loose = many) — mechanism validated, **full
+re-backtest still owed** (anchor changed → different entries). See [[va-breakout-graduation]],
+[[strategy-pipeline-architecture]].
+
+**⚠️ Incident:** mid-session, `experiments/engine/` was wiped from the working tree by something
+external (~21:25; all files showed ` D`). My grade.py regime edits were already committed
+(`fa7e898`), so `git checkout -- experiments/engine/` restored everything intact. Flag if it
+recurs — an editor/sync/cleanup tool is the likely culprit.
+
 ## 2026-07-05 15:xx — ATR wired in as an indicator (experimental)
 
 **Context:** explored NQ volatility via a run of throwaway artifacts (time-of-day

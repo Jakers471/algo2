@@ -5,6 +5,23 @@ All notable changes to this project. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **L2 consolidation base is now LEG-based (fractal), replacing the rolling-window run
+  detector.** The 1m base is now found the same way L1 reads structure: `grade()` each swing
+  **leg** *within* the session (the session is the L1 container; legs are its L2 sub-anchors),
+  instead of a bespoke sliding-window CONSOLIDATION-run detector. A leg = a threshold zigzag
+  swing (`experiments/engine/legs.py`, ported from the archived `layer2/leg_profiles`) whose
+  reversal threshold = `swing_frac × session range` (scale-invariant). New knobs under
+  `strategy.consolidation`: `swing_frac`, `base_method` (**`grade_state`** = `grade(leg).state
+  == CONSOLIDATION`, reusing the regime cutoffs · **`va_frac`** = the archived value-area rule,
+  with `va_thr`), `min_leg_len`, `max_age` — replacing `det_window`/`state_window`/`min_len`.
+  Levels (VAH/VAL/POC) always come from `grade(leg)` so they never disagree with the regime
+  engine. `build_snapshot` now slices the current session's 1m bars as the leg window. Leg
+  grades are cached keyed by the regime knobs (config change → clean recompute, never stale).
+  This changes entry levels vs the prior detector — the strategy needs re-backtesting (bounded
+  smoke run confirms bases/intents/trades fire for both methods). Documented in
+  `algo_config.README.md`.
+
 ### Added
 - **Strategy knobs graduated into `algo_config.yaml` (live tuning, no restart).** The regime
   cutoffs, the L2 base detector, and the entry rule were hardcoded in the frozen engine; they

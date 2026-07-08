@@ -1,18 +1,26 @@
-"""src.strategy.readings.consolidation — the tradeable L2 base (a fact).
+"""src.strategy.readings.consolidation — the tradeable L2 base (a fact), leg-based.
 
-The VA-breakout strategy enters on the break of a 1m CONSOLIDATION's value area. The
-CONSOLIDATION itself — where it is, its VAH/VAL — is an objective FACT (found by the
-frozen engine), so it lives here as a reading. Whether to TRADE its break is the
-decider's opinion, not this module's.
+The VA-breakout strategy enters on the break of a 1m CONSOLIDATION's value area. This
+finds that base the FRACTAL way — the same anchor+measurement pattern used at L1:
 
-Detection mirrors experiments/engine/research/backtest_equity.py `collect()`:
-  roll grade() over recent 1m bars -> per-bar state -> keep the most recent
-  CONSOLIDATION run >= MIN_LEN bars -> grade it for VAH/VAL. None if there isn't one
-  recently (or it is stale). Same computes as every other scale — fractal.
+  L1 (structure.py): grade() the SESSION (the clock-given anchor).
+  L2 (here):         grade() each LEG within the session (the structure-detected anchor).
 
-Knobs (DET_WINDOW / STATE_WINDOW / MIN_LEN / MAX_AGE) now live in algo_config.yaml
-(strategy.consolidation); build_snapshot resolves them and passes them in. The module
-constants are only the fallback defaults.
+A LEG is a swing (legs.swing_legs, a threshold zigzag); the threshold = swing_frac * the
+session's price range, so the same swing_frac carves legs at any scale (scale-invariant).
+Each completed leg is grade()d — a leg with a fat POC / narrow value area is a RANGE =
+a consolidation base. The most recent such base's value-area edges (VAH/VAL) are the
+breakout levels the decider trades. This restores the archived layer2/leg_profiles design;
+the old rolling-window run-detector (mirroring backtest_equity `collect()`) is retired.
+
+Whether a leg counts as a base is SELECTABLE in config (strategy.consolidation.base_method):
+  - grade_state : leg is a base iff grade(leg).state == 'CONSOLIDATION' (reuses the regime
+                  cutoffs e_cut/a_cut — ONE regime definition at every scale; stricter, also
+                  needs low efficiency).
+  - va_frac     : leg is a base iff grade(leg).va_frac < va_thr (the archived leg_profiles
+                  rule — value-area concentration only, a separate threshold).
+Either way the LEVELS (vah/val/poc) come from grade(leg), so they never disagree with the
+regime engine. Facts only — whether to TRADE the break is the decider's opinion.
 """
 from __future__ import annotations
 
@@ -22,25 +30,27 @@ import sys
 _REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(_REPO, "experiments", "engine"))
 from grade import grade  # noqa: E402
+from legs import swing_legs  # noqa: E402
 
-DET_WINDOW = 120     # recent 1m bars to scan
-STATE_WINDOW = 25    # rolling_states window (matches the backtest)
-MIN_LEN = 15         # min CONSOLIDATION length in bars (matches the backtest)
+# Fallback defaults; the live values come from algo_config.yaml (strategy.consolidation),
+# resolved in build_snapshot and passed to read_consolidation.
+SWING_FRAC = 0.20    # zigzag reversal threshold as a fraction of the session's range
+BASE_METHOD = "grade_state"  # grade_state | va_frac — how a leg is judged a base
+VA_THR = 0.55        # (va_frac method) value-area fraction below which a leg is a base
+MIN_LEG_LEN = 5      # ignore legs shorter than this many bars (too small to be a base)
 MAX_AGE = 40         # ignore a base that ended > this many bars ago (gone stale)
-# The four above are DEFAULTS; the live values come from algo_config.yaml
-# (strategy.consolidation), resolved in build_snapshot and passed to read_consolidation.
 
-# PERF: a 1m bar's state = grade(its trailing 25-bar window).state — deterministic for a
-# fixed (bars + regime knobs), so we compute it ONCE and reuse it across every bar-step
-# (instead of re-grading the whole window each bar, the ~50x redundancy). Keyed by
-# (grade_sig, window, bar-ts): grade_sig makes the cache INVALIDATE the instant a regime
-# knob changes (change config -> different reading, never stale). Bounded by
+# PERF: grade(leg) is deterministic for a fixed (bars + regime knobs), so we memoize it by
+# (grade_sig, leg-start-ts, leg-end-ts). grade_sig makes the cache INVALIDATE the instant a
+# regime knob changes (change config -> different reading, never stale). Bounded by
 # clear_state_cache() (the runner clears per session; the server on rebuild).
-_STATE_CACHE: dict = {}
+_LEG_CACHE: dict = {}
 
 
 def clear_state_cache() -> None:
-    _STATE_CACHE.clear()
+    """Clear the memoized leg grades. Kept under this name so existing callers
+    (chart/server.py, the runner) that clear the cache on rebuild keep working."""
+    _LEG_CACHE.clear()
 
 
 def _grade_sig(grade_cfg) -> tuple:
@@ -50,62 +60,63 @@ def _grade_sig(grade_cfg) -> tuple:
     return (g.get("n_rows"), g.get("e_cut"), g.get("a_cut"), g.get("min_bars"))
 
 
-def _states_cached(win, window, grade_cfg):
-    """Same result as rolling_states(win, window), but each bar's state is memoized by
-    (regime knobs, timestamp) so a sequence of overlapping windows only pays for the NEW
-    bars — and a config change invalidates cleanly (grade_sig in the key)."""
-    idx = win.index
-    sig = _grade_sig(grade_cfg)
-    states = [None] * len(win)
-    for i in range(window, len(win)):
-        key = (sig, window, idx[i].value)
-        s = _STATE_CACHE.get(key)
-        if s is None:
-            s = grade(win.iloc[i - window:i + 1], **(grade_cfg or {})).state
-            _STATE_CACHE[key] = s
-        states[i] = s
-    return states
+def _leg_grade(window, i0, i1, sig, grade_cfg):
+    """grade(window[i0:i1+1]), memoized by (regime knobs, leg-start-ts, leg-end-ts)."""
+    idx = window.index
+    key = (sig, idx[i0].value, idx[i1].value)
+    g = _LEG_CACHE.get(key)
+    if g is None:
+        g = grade(window.iloc[i0:i1 + 1], **(grade_cfg or {}))
+        _LEG_CACHE[key] = g
+    return g
 
 
-def _cons_runs(states, min_len):
-    out, i = [], 0
-    while i < len(states):
-        j = i
-        while j < len(states) and states[j] == states[i]:
-            j += 1
-        if states[i] == "CONSOLIDATION" and j - i >= min_len:
-            out.append((i, j - 1))
-        i = j
-    return out
-
-
-def read_consolidation(ltf_df, cfg: dict | None = None,
+def read_consolidation(window, cfg: dict | None = None,
                        grade_cfg: dict | None = None) -> dict | None:
-    """Recent 1m bars -> the most recent tradeable CONSOLIDATION base, or None.
+    """Session 1m bars -> the most recent tradeable CONSOLIDATION base, or None.
 
-    `{vah, val, poc, len, ended_ago}` — the value-area edges are the breakout levels;
-    `ended_ago` = bars since the base completed (0 = still forming on the last bar).
+    `window` = the current session's 1m bars up to `asof` (the L1 container, sliced by
+    build_snapshot). `{vah, val, poc, len, ended_ago}` — the value-area edges are the
+    breakout levels; `ended_ago` = bars since the base leg completed.
 
-    `cfg` = the resolved consolidation knobs (strategy.consolidation: det_window/
-    state_window/min_len/max_age); `grade_cfg` = the regime knobs for grade(). Both
-    None fall back to this module's defaults (identical values)."""
+    `cfg` = the resolved consolidation knobs (strategy.consolidation: swing_frac/
+    base_method/va_thr/min_leg_len/max_age); `grade_cfg` = the regime knobs for grade().
+    Both None fall back to this module's defaults (identical values)."""
     cfg = cfg or {}
-    det_window = int(cfg.get("det_window", DET_WINDOW))
-    state_window = int(cfg.get("state_window", STATE_WINDOW))
-    min_len = int(cfg.get("min_len", MIN_LEN))
+    swing_frac = float(cfg.get("swing_frac", SWING_FRAC))
+    base_method = str(cfg.get("base_method", BASE_METHOD))
+    va_thr = float(cfg.get("va_thr", VA_THR))
+    min_leg_len = int(cfg.get("min_leg_len", MIN_LEG_LEN))
     max_age = int(cfg.get("max_age", MAX_AGE))
-    if ltf_df is None or len(ltf_df) < state_window + min_len:
+    min_bars = int((grade_cfg or {}).get("min_bars", 8))
+
+    if window is None or len(window) < min_bars + min_leg_len:
         return None
-    win = ltf_df.tail(det_window)
-    states = _states_cached(win, state_window, grade_cfg)
-    runs = _cons_runs(states, min_len)
-    if not runs:
+    hi = float(window["high"].max())
+    lo = float(window["low"].min())
+    rng = hi - lo
+    if rng <= 0:
         return None
-    a, b = runs[-1]
-    ended_ago = len(win) - 1 - b
-    if ended_ago > max_age:
+    thr = swing_frac * rng
+    legs = swing_legs(window, thr)
+    if len(legs) < 2:                       # need at least one COMPLETED leg
         return None
-    g = grade(win.iloc[a:b + 1], **(grade_cfg or {}))
-    if g.vah <= g.val:
-        return None
-    return {"vah": g.vah, "val": g.val, "poc": g.poc, "len": b - a + 1, "ended_ago": ended_ago}
+
+    sig = _grade_sig(grade_cfg)
+    n = len(window)
+    # Scan COMPLETED legs newest-first (exclude the last = the forming leg) for a base.
+    for i0, i1 in reversed(legs[:-1]):
+        if (i1 - i0 + 1) < min_leg_len:
+            continue
+        ended_ago = n - 1 - i1
+        if ended_ago > max_age:             # legs only get older going back -> stop
+            break
+        g = _leg_grade(window, i0, i1, sig, grade_cfg)
+        if g.vah <= g.val:
+            continue
+        is_base = (g.state == "CONSOLIDATION") if base_method == "grade_state" else (g.va_frac < va_thr)
+        if not is_base:
+            continue
+        return {"vah": g.vah, "val": g.val, "poc": g.poc,
+                "len": i1 - i0 + 1, "ended_ago": ended_ago}
+    return None

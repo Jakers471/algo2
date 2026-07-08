@@ -140,11 +140,15 @@ def strategy_config() -> dict:
             "a_cut": float(regime.get("a_cut", 0.55)),
             "min_bars": int(regime.get("min_bars", 8)),
         },
-        # consolidation — the L2 tradeable-base detector (breakout levels).
+        # consolidation — the L2 leg-based base detector (breakout levels). Legs are
+        # swing legs (threshold = swing_frac * session range); base_method selects how a
+        # leg is judged a base (grade_state reuses the regime cutoffs; va_frac is the
+        # archived value-area rule with its own va_thr).
         "consolidation": {
-            "det_window": int(consolidation.get("det_window", 120)),
-            "state_window": int(consolidation.get("state_window", 25)),
-            "min_len": int(consolidation.get("min_len", 15)),
+            "swing_frac": float(consolidation.get("swing_frac", 0.20)),
+            "base_method": str(consolidation.get("base_method", "grade_state")),
+            "va_thr": float(consolidation.get("va_thr", 0.55)),
+            "min_leg_len": int(consolidation.get("min_leg_len", 5)),
             "max_age": int(consolidation.get("max_age", 40)),
         },
         # decide — the va_breakout entry rule.

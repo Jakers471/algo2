@@ -85,12 +85,15 @@ strategy:
     a_cut: 0.55              # acceptance  >= this => accepted/fat POC (GRIND vs IMPULSE, CONSOL vs WHIPSAW)
     min_bars: 8              # fewer bars than this => UNCLEAR
 
-  # consolidation — the L2 tradeable base detector (the 1m breakout levels the decider uses).
+  # consolidation — the L2 base detector (the 1m breakout levels the decider uses),
+  # LEG-BASED (fractal): grade() each swing leg within the session, like L1 grades the
+  # session. A RANGE leg (fat POC / narrow value area) is a consolidation base.
   consolidation:
-    det_window: 120          # recent 1m bars to scan for a base
-    state_window: 25         # rolling grade() window per 1m bar (its regime state)
-    min_len: 15              # min CONSOLIDATION run length, in bars, to count as a base
-    max_age: 40              # ignore a base that ended > this many bars ago (gone stale)
+    swing_frac: 0.20         # zigzag reversal threshold = swing_frac * session range (leg size)
+    base_method: grade_state # grade_state | va_frac — how a leg is judged a base (swap to A/B)
+    va_thr: 0.55             # (va_frac method only) value-area fraction below which a leg is a base
+    min_leg_len: 5           # ignore legs shorter than this many bars (too small to be a base)
+    max_age: 40              # ignore a base whose leg ended > this many bars ago (gone stale)
 
   # decide — the va_breakout entry rule (reads L1 bias + the L2 base).
   decide:
