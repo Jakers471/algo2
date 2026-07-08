@@ -6,6 +6,11 @@ All notable changes to this project. Format loosely follows
 ## [Unreleased]
 
 ### Fixed
+- **QC LEAN — hard EOD flatten (multi-day-hold leak).** The session-flatten only runs when a 5m
+  bar arrives, so a position open into a weekend/data-gap could ride for days (up to 89h / 3.7
+  days observed; 13% of the 2015-2026 trades were held >12h). Added a scheduled `FlattenEod` at
+  15:55 CT every day (data-independent, before the 16:00 CT CME daily halt) so the strategy is
+  genuinely intraday — no overnight/weekend gap exposure. The local sim was already strict here.
 - **QC LEAN execution — real bracket orders (the "0% win" bug).** The QC port's manual
   `CheckExit` read the 1m bar's aggregate high/low and couldn't tell whether the stop was hit
   *before or after* the entry filled within the same bar; with a tight consolidation VA that

@@ -111,6 +111,7 @@ def generate_trades(o, h, l, c, v, mod, epoch, st):
             va = abs(filled["vah"] - filled["val"])
             trades.append({"entry_idx": filled["entry_idx"], "end_idx": end,
                            "direction": filled["direction"], "entry": filled["entry"],
+                           "vah": filled["vah"], "val": filled["val"],
                            "va_width": va, "va_pct": va / filled["entry"]})
         i = k
     return trades

@@ -87,6 +87,12 @@ namespace QuantConnect.Algorithm.CSharp
             c5.DataConsolidated += On5m;
             SubscriptionManager.AddConsolidator(_sym, c5);
 
+            // HARD EOD flatten: fires at 15:55 CT every day REGARDLESS of data (the session-flatten in
+            // On5m only runs when a 5m bar arrives, so a position open into a weekend/data-gap could ride
+            // for days — up to 89h observed). This guarantees the strategy is genuinely intraday: no
+            // position survives the CME daily close (16:00 CT halt), so no overnight/weekend gap exposure.
+            Schedule.On(DateRules.EveryDay(_sym), TimeRules.At(15, 55), FlattenEod);
+
             SetWarmUp(TimeSpan.FromDays(3));
         }
 
@@ -207,6 +213,18 @@ namespace QuantConnect.Algorithm.CSharp
             Liquidate(_future.Mapped);
             Record(exitPx, reason);
             _inPos = false;
+        }
+
+        // scheduled hard EOD flatten (data-independent) — drop any resting entry + flatten at market.
+        private void FlattenEod(string name, DateTime time)
+        {
+            CancelEntry();
+            if (_inPos)
+            {
+                double px = (_future.Mapped != null && Securities.ContainsKey(_future.Mapped))
+                    ? (double)Securities[_future.Mapped].Price : _pos.Entry;
+                FlattenPosition(px, "eod");
+            }
         }
 
         public override void OnOrderEvent(OrderEvent orderEvent)

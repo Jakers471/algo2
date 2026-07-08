@@ -1,0 +1,16 @@
+{
+  "run_id": "2026-07-06_nt_tick_NQ_2024-2026",
+  "created_utc": "2026-07-06T22:05:16Z",
+  "platform": "ninjatrader",
+  "strategy": "VABreakout",
+  "instrument": "NQ",
+  "bar_type": "Minute/1",
+  "tick_replay": true,
+  "fill_resolution": "tick",
+  "commission_per_rt": 4,
+  "slippage_ticks": 1,
+  "requested_range": ["2024-03-12", "2026-03-20"],
+  "params": {"NRows":24,"StateWindow":25,"MinLen":15,"MaxAge":40,"DetWindow":120,"MinBars":8,"ECut":0.38,"ACut":0.55,"BiasStr":0.3,"TargetR":2.0},
+  "sample_type": "out_of_sample",
+  "notes": ""
+}
