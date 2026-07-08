@@ -16,10 +16,24 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.join(REPO_ROOT, "algo_config.yaml")
 
 
+_CACHE: dict = {"mtime": None, "data": None}
+
+
 def load() -> dict:
-    """Parse algo_config.yaml fresh (so edits take effect without a restart)."""
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    """Parse algo_config.yaml, cached by file mtime. Edits still take effect on the
+    next request (the mtime changes -> cache misses -> re-read) — no restart — but
+    repeated reads within one request/run are free instead of re-parsing the YAML
+    every call (the strategy resolves config many times per bar). Callers build fresh
+    dicts from this, so the shared cached object is never mutated."""
+    try:
+        mtime = os.path.getmtime(CONFIG_PATH)
+    except OSError:
+        mtime = None
+    if _CACHE["data"] is None or _CACHE["mtime"] != mtime:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            _CACHE["data"] = yaml.safe_load(f) or {}
+        _CACHE["mtime"] = mtime
+    return _CACHE["data"]
 
 
 def _hhmm_to_min(value) -> int:

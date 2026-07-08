@@ -117,6 +117,10 @@ def read_consolidation(window, cfg: dict | None = None,
         is_base = (g.state == "CONSOLIDATION") if base_method == "grade_state" else (g.va_frac < va_thr)
         if not is_base:
             continue
+        idx = window.index
         return {"vah": g.vah, "val": g.val, "poc": g.poc,
-                "len": i1 - i0 + 1, "ended_ago": ended_ago}
+                "len": i1 - i0 + 1, "ended_ago": ended_ago,
+                # absolute span (Unix seconds, UTC) so consumers can draw the base box.
+                "start": int(idx[i0].value // 1_000_000_000),
+                "end": int(idx[i1].value // 1_000_000_000)}
     return None

@@ -249,6 +249,81 @@ def api_atr():
     return jsonify(symbol=symbol, tf=tf, **result)
 
 
+# ---- Strategy overlay (the pipeline drawn on the chart) --------------------
+# Runs the WHOLE pipeline across a range in one batch (a fresh Driver stepped bar by
+# bar — the same brain as replay/live) and returns the resulting trades + the base
+# each entered on, as drawable data. This is the tune-and-see loop: edit a strategy
+# knob in algo_config.yaml, refresh, and the overlay recomputes (cache is keyed by the
+# config file's mtime, so a config edit invalidates it; an unchanged config is instant).
+_strategy_cache = {"key": None, "result": None}
+
+
+# Bounded trailing windows so per-bar work is CONSTANT, not growing with the range
+# (the snapshot only needs the current session + the recent 1m window). Both comfortably
+# exceed the longest session, so the snapshot is identical to feeding the full history.
+_W5 = 300      # trailing 5m bars (~25h) — always contains the current session
+_W1 = 900      # trailing 1m bars (~15h) — always contains the session's 1m bars
+
+
+def _strategy_batch(symbol, tf, limit):
+    """Step a Driver across the last `limit` bars -> {"trades": [...]}. Each trade is a
+    CLOSED book entry enriched with the consolidation base captured at its entry bar.
+
+    Uses bounded trailing 5m/1m windows and positional (searchsorted) 1m slicing so the
+    cost is O(range), not O(range^2) — the full-slice version was ~35ms/bar (unusable)."""
+    from src.strategy.readings.consolidation import clear_state_cache
+    d5 = _load_df(symbol, tf, limit)
+    d1 = _load_df(symbol, "1m", 200_000)
+    d1_idx = d1.index                    # sorted -> searchsorted gives the cut in O(log n)
+    clear_state_cache()
+    drv = strategy_pipeline.Driver()
+    bases_at = {}                       # opened_asof -> the base dict at entry
+    idx = d5.index
+    for i in range(len(d5)):
+        t = idx[i]
+        j = int(d1_idx.searchsorted(t, side="right"))     # # of 1m bars with index <= t
+        w5 = d5.iloc[max(0, i - _W5 + 1):i + 1]
+        w1 = d1.iloc[max(0, j - _W1):j]
+        r = drv.step(w5, symbol, tf, ltf_df=w1)
+        act = r.get("action") or {}
+        if act.get("kind") == "activate":
+            snap = r.get("snapshot") or {}
+            bases_at[snap.get("asof")] = snap.get("consolidation") or {}
+    trades = []
+    for tr in drv.book.log:
+        base = bases_at.get(tr.get("opened_asof")) or {}
+        long = tr["direction"] == "long"
+        trades.append({
+            "direction": tr["direction"],
+            "entry": tr["entry"], "exit": tr["exit"], "R": tr["R"], "reason": tr["reason"],
+            "stop": tr["entry"] - tr["risk"] if long else tr["entry"] + tr["risk"],
+            "entry_time": tr["opened_asof"], "exit_time": tr["closed_asof"],
+            "base_vah": base.get("vah"), "base_val": base.get("val"),
+            "base_start": base.get("start"), "base_end": base.get("end"),
+        })
+    return {"trades": trades}
+
+
+@app.route("/api/strategy")
+def api_strategy():
+    """The strategy pipeline over a range, as drawable trades. Cached per
+    (symbol, tf, limit, config-mtime) — recomputes only when the range or the config
+    changes. Keep `limit` modest (the batch steps every bar); the renderer sends ~2500."""
+    parsed = _request_params()
+    if len(parsed) == 2:
+        return parsed
+    symbol, tf, limit = parsed
+    try:
+        mtime = os.path.getmtime(algo_config.CONFIG_PATH)
+    except OSError:
+        mtime = 0
+    key = (symbol, tf, limit, mtime)
+    if _strategy_cache["key"] != key:
+        _strategy_cache["result"] = _strategy_batch(symbol, tf, limit)
+        _strategy_cache["key"] = key
+    return jsonify(symbol=symbol, tf=tf, **_strategy_cache["result"])
+
+
 def _replay_pipeline():
     """Step the STATEFUL strategy pipeline to the replay `asof` and return
     {snapshot, scores, intent, action, book} — the same thing the strategy consumes;

@@ -36,6 +36,26 @@ regime/consol/trades) + a chart overlay renderer → the loop exists. Perf follo
 `config.load()` by file mtime (avoid a YAML read per bar); make the 120k 1m slice
 positional (kill the per-bar mask).
 
+## 2026-07-07 22:xx — Strategy overlay on the chart (tune-and-see loop, steps 2+3)
+
+**Goal reached (first version):** the strategy is now DRAWN on the chart, not just the terminal.
+`/api/strategy` runs the pipeline across the range (fresh Driver, same brain) → trades + the base
+each broke out of. `chart/static/js/indicators/strategy.js` = a canvas primitive (like
+volume_profile.js): entry ▲/▼ → exit ● connector (win green / loss red) + R label + faint stop +
+VAH–VAL base box. Toggleable, sub-toggles Trades/Bases.
+
+**The loop:** edit a strategy knob in algo_config.yaml → refresh → overlay recomputes. Backend caches
+the batch keyed by the config file's **mtime**, so a config edit invalidates it; unchanged config is
+instant (0ms). `config.load()` also mtime-cached now (was re-parsing YAML ~2×/bar).
+
+**Perf:** full-slice batch was ~35ms/bar (O(range²), 108s for 2500 bars — unusable). Fixed with
+bounded trailing windows (W5=300 5m, W1=900 1m — both exceed the longest session so snapshots are
+identical) + positional searchsorted 1m slicing → O(range). Now ~25-33s for 2500 bars (verified
+identical trades). Still slow-ish → "computing strategy…" indicator shows while it runs. Deeper
+per-bar speedups (grade/volume-profile caching) = follow-up. See [[va-breakout-graduation]].
+
+**Still owed:** full historical re-backtest of the leg-based anchor (only bounded smoke so far).
+
 ## 2026-07-07 21:xx — L2 base made truly fractal (leg-based) + engine dir restore
 
 **Trigger:** Jake looked at `experiments/archive/layer2/leg_profiles.png` and called out that

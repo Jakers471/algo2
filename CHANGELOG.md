@@ -5,6 +5,23 @@ All notable changes to this project. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **Strategy overlay on the chart — the tune-and-see loop.** The pipeline's output is now drawn
+  ON the chart, not just the terminal monitor. New `/api/strategy` endpoint runs the whole pipeline
+  across the loaded range (a fresh `Driver` stepped bar-by-bar — same brain as replay/live) and
+  returns the resulting trades + the consolidation base each broke out of. New renderer
+  `chart/static/js/indicators/strategy.js` (toggleable "Strategy (VA breakout)", sub-toggles
+  Trades/Bases) draws each trade as entry ▲/▼ → exit ● connected by a win-green/loss-red line with
+  the R printed, the stop as a faint line, and the base as a VAH–VAL box over its span. **Edit a
+  strategy knob in `algo_config.yaml` (regime/consolidation/decide), refresh, and the overlay
+  recomputes** — the result is cached keyed by the config file's mtime, so a config edit invalidates
+  it and an unchanged config is instant. Perf: bounded trailing 5m/1m windows + positional
+  (searchsorted) 1m slicing make the batch O(range) not O(range²) (~2-3× faster; identical trades
+  verified); `config.load()` now caches by file mtime (kills the per-bar YAML re-parse). Still
+  ~25-33s for a 2500-bar first compute — a "computing strategy…" indicator shows while it runs;
+  deeper per-bar speedups (grade/volume-profile) are a follow-up. `readings/consolidation` now
+  returns the base's `start`/`end` timestamps so the box can be drawn.
+
 ### Changed
 - **L2 consolidation base is now LEG-based (fractal), replacing the rolling-window run
   detector.** The 1m base is now found the same way L1 reads structure: `grade()` each swing
