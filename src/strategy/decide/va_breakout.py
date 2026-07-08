@@ -14,11 +14,13 @@ monitor until the port (phase 2). The entry rule from research/backtest_equity.p
 """
 from __future__ import annotations
 
+from ...config import strategy_config
 from ..score import Scores
 from ..snapshot import Snapshot
 from .base import Decider, Intent, register_decider
 
-# Strategy knobs (from the research; TODO move to algo_config.yaml, convention #3).
+# Fallback defaults; the live values come from algo_config.yaml (strategy.decide),
+# read per-decision so editing the YAML + refreshing retunes entries with no restart.
 BIAS_STR = 0.3      # |L1 strength| to call the session directional (the bias filter)
 TARGET_R = 2.0      # profit target in R (VA-height multiples); stop = opposite VA edge
 
@@ -33,6 +35,8 @@ class VaBreakout(Decider):
     target TARGET_R. Fires whenever the setup holds; `manage`/the book gate re-entry."""
 
     def decide(self, snap: Snapshot, scores: Scores) -> "Intent | None":
+        dcfg = strategy_config()["decide"]
+        bias_str, target_r = dcfg["bias_str"], dcfg["target_r"]
         stc = snap.structure or {}
         cons = snap.consolidation or {}
         strength = stc.get("strength")
@@ -40,8 +44,8 @@ class VaBreakout(Decider):
         if strength is None or vah is None or val is None or vah <= val:
             return None
         risk = vah - val
-        if strength >= BIAS_STR and price > vah:          # bull session + upside break
-            return Intent("long", entry=vah, stop=val, target=vah + TARGET_R * risk)
-        if strength <= -BIAS_STR and price < val:         # bear session + downside break
-            return Intent("short", entry=val, stop=vah, target=val - TARGET_R * risk)
+        if strength >= bias_str and price > vah:          # bull session + upside break
+            return Intent("long", entry=vah, stop=val, target=vah + target_r * risk)
+        if strength <= -bias_str and price < val:         # bear session + downside break
+            return Intent("short", entry=val, stop=vah, target=val - target_r * risk)
         return None

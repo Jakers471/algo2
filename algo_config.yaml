@@ -75,6 +75,28 @@ strategy:
     volume_window: 20        # baseline lookback: rvol, delta, and vexp's slow avg
     volume_fast: 3           # vexp fast avg (short-term); vexp = avg(fast) / avg(window)
 
+  # regime — the GRADE state classifier's cutoffs (passed into grade()). These decide
+  # which regime every window reads as (IMPULSE / GRIND / CONSOLIDATION / WHIPSAW /
+  # UNCLEAR) at BOTH scales (L1 5m session + L2 1m). Change one -> the whole chart's
+  # regime + the trades that depend on it shift.
+  regime:
+    n_rows: 24               # volume-profile rows per anchor (scale-invariant va_frac)
+    e_cut: 0.38              # efficiency >= this => directional (IMPULSE/GRIND vs CONSOL/WHIPSAW)
+    a_cut: 0.55              # acceptance  >= this => accepted/fat POC (GRIND vs IMPULSE, CONSOL vs WHIPSAW)
+    min_bars: 8              # fewer bars than this => UNCLEAR
+
+  # consolidation — the L2 tradeable base detector (the 1m breakout levels the decider uses).
+  consolidation:
+    det_window: 120          # recent 1m bars to scan for a base
+    state_window: 25         # rolling grade() window per 1m bar (its regime state)
+    min_len: 15              # min CONSOLIDATION run length, in bars, to count as a base
+    max_age: 40              # ignore a base that ended > this many bars ago (gone stale)
+
+  # decide — the va_breakout entry rule (reads L1 bias + the L2 base).
+  decide:
+    bias_str: 0.3            # |L1 strength| needed to call the session directional (the bias filter)
+    target_r: 2.0            # profit target in R; stop = opposite VA edge = 1R
+
 # ---- Chart defaults -------------------------------------------------------
 chart:
   symbol: NQ

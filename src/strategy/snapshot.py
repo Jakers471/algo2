@@ -68,8 +68,11 @@ def build_snapshot(df: pd.DataFrame, symbol: str, tf: str,
     price = float(last["close"])
     high, low = float(last["high"]), float(last["low"])
 
-    # [indicators] raw  ->  [readings] facts (reading knobs come from config)
-    rcfg = strategy_config()["readings"]
+    # [indicators] raw  ->  [readings] facts (every reading knob comes from config)
+    scfg = strategy_config()
+    rcfg = scfg["readings"]
+    regime_cfg = scfg["regime"]          # grade() cutoffs, shared by both structure scales
+    cons_cfg = scfg["consolidation"]     # L2 base detector knobs
     vp_reading = read_volume_profile(compute_volume_profile(df), asof)
     vol_reading = read_volume(compute_volume(df),
                               window=rcfg["volume_window"], fast=rcfg["volume_fast"])
@@ -78,12 +81,13 @@ def build_snapshot(df: pd.DataFrame, symbol: str, tf: str,
     # WHIPSAW). Fall back to the full slice only if no session has formed.
     insts = session_instances(df)
     sess_bars = df.iloc[insts[-1]["start_pos"]:insts[-1]["end_pos"] + 1] if insts else df
-    structure_reading = read_structure(sess_bars)
+    structure_reading = read_structure(sess_bars, grade_cfg=regime_cfg)
     # L2 (fractal): same grade(), on the recent 1m window. Same computes, finer scale.
-    structure_ltf_reading = (read_structure(ltf_df.tail(LTF_BARS))
+    structure_ltf_reading = (read_structure(ltf_df.tail(LTF_BARS), grade_cfg=regime_cfg)
                              if ltf_df is not None and not ltf_df.empty else None)
     # L2 tradeable base: the current 1m CONSOLIDATION (breakout levels), if any.
-    consolidation_reading = read_consolidation(ltf_df) if ltf_df is not None else None
+    consolidation_reading = (read_consolidation(ltf_df, cfg=cons_cfg, grade_cfg=regime_cfg)
+                             if ltf_df is not None else None)
 
     return Snapshot(
         symbol=symbol,

@@ -23,16 +23,19 @@ sys.path.insert(0, os.path.join(_REPO, "experiments", "engine"))
 from grade import grade  # noqa: E402
 
 
-def read_structure(df) -> dict | None:
+def read_structure(df, grade_cfg: dict | None = None) -> dict | None:
     """OHLCV slice (the current window) -> the structural reading, or None if empty.
 
     `{state, direction, strength, efficiency, acceptance, poc, vah, val}` — the
     GRADE fields the strategy reads. `state` is UNCLEAR when the window is too small
     (grade()'s honest "no clean structure" verdict), so consumers can just check it.
+
+    `grade_cfg` = the resolved regime knobs (algo_config.yaml strategy.regime) passed
+    to grade(); None uses grade()'s built-in defaults (identical values).
     """
     if df is None or len(df) < 1:
         return None
-    g = grade(df)
+    g = grade(df, **(grade_cfg or {}))
     return {
         "state": g.state,               # IMPULSE/GRIND/CONSOLIDATION/WHIPSAW/UNCLEAR (+dir)
         "direction": g.direction,       # bull | bear | flat

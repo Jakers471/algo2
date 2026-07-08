@@ -140,34 +140,39 @@ moving_averages:
 
 ---
 
-## `strategy` — the pipeline (versions + reading knobs)
+## `strategy` — the pipeline (versions + knobs)
 
 ```yaml
 strategy:
   use:
     scorer:  v1
-    decider: v1
+    decider: va_breakout
     manager: fixed
-  readings:
-    volume_window: 20
-    volume_fast: 3
+  readings:      { volume_window: 20, volume_fast: 3 }
+  regime:        { n_rows: 24, e_cut: 0.38, a_cut: 0.55, min_bars: 8 }
+  consolidation: { det_window: 120, state_window: 25, min_len: 15, max_age: 40 }
+  decide:        { bias_str: 0.3, target_r: 2.0 }
 ```
 
 Mirrors `src/strategy/` (`readings → snapshot → score → decide → manage`). See
-`src/strategy/README.md` for the full pipeline.
+`src/strategy/README.md` for the full pipeline. Every numeric knob the strategy runs
+on lives here — edit + refresh retunes the readings/regime/trades with no restart
+(defaults reproduce the prior hardcoded behaviour, so an unedited file is a no-op).
 
 ### `use` — which VERSION of each swappable stage runs
 
 Each stage (`scorer` / `decider` / `manager`) is a folder of interchangeable
 versions. These three lines pick which one is active. **Swap a stage by changing
 one word** — e.g. `manager: fixed → trailing` — and nothing else moves. A
-"strategy" is just a named combo of versions. (score/decide/manage are stubs today,
-so these don't do anything visible yet — the wiring is in place for when they do.)
+"strategy" is just a named combo of versions. `decider: va_breakout` and
+`manager: fixed` carry live logic today (tuned by the `regime`/`consolidation`/`decide`
+knobs below); the `scorer` slot is a pass-through until confluence scoring is added.
 
 ### `readings` — how the SNAPSHOT facts are derived
 
 Knobs for turning raw indicator output into the facts in the Snapshot. Right now,
-these are the **volume** lookback windows.
+these are the **volume** lookback windows. (The regime/base/entry knobs live in the
+three sections below.)
 
 > **Important — one window feeds several facts.** `volume_window` is *not* just for
 > one number. It is the shared **baseline lookback** used by **all** of the volume
@@ -213,6 +218,106 @@ On 5-minute bars: `volume_window: 20` ≈ 100 minutes of baseline; `volume_fast:
 > Edge case: at the very start of the data (fewer than `volume_window` bars exist),
 > the averages use whatever bars are available — so the first ~20 readings run on a
 > shorter baseline. Rarely matters (we load 10k bars), but that's the one caveat.
+
+### `regime` — the GRADE state classifier's cutoffs
+
+```yaml
+strategy:
+  regime:
+    n_rows: 24
+    e_cut: 0.38
+    a_cut: 0.55
+    min_bars: 8
+```
+
+These are the cutoffs the GRADE engine (`experiments/engine/grade.py`) uses to label a
+window's **regime** — `IMPULSE` / `GRIND` (±direction) / `CONSOLIDATION` / `WHIPSAW` /
+`UNCLEAR`. GRADE reduces any window to two axes and cross-cuts them:
+
+```
+              acceptance ≥ a_cut       acceptance < a_cut
+efficiency ≥ e_cut   GRIND (up/dn)         IMPULSE (up/dn)
+efficiency < e_cut   CONSOLIDATION         WHIPSAW
+```
+
+> **Important — one setting, both scales AND the trades.** These cutoffs run on **both**
+> structure scales (L1 5m session *and* L2 1m window) and on the consolidation detector.
+> The decider's bias filter reads the L1 `strength`, and the entry reads the L2
+> `CONSOLIDATION` base — so changing a regime knob shifts the chart's regime coloring
+> **and** which setups fire. This is the single biggest lever in the strategy.
+
+- **`e_cut: 0.38`** — the **efficiency** cutoff. Efficiency = `|net| ÷ travel` (0..1): how
+  *directly* price got where it ended (1 = a straight line, ~0 = churned in place). At or
+  above `e_cut` the window is **directional** (IMPULSE/GRIND); below it is **choppy**
+  (CONSOLIDATION/WHIPSAW). *Raise it* → fewer windows count as trends (stricter). *Lower it*
+  → more do.
+- **`a_cut: 0.55`** — the **acceptance** cutoff. Acceptance = `1 − value-area fraction`: how
+  **fat** the POC is (how much of the range price actually accepted / built value in). High
+  = value built (GRIND / CONSOLIDATION); low = thin, one-and-done (IMPULSE / WHIPSAW). *Raise
+  it* → harder to call something "accepted."
+- **`n_rows: 24`** — how many rows the volume profile is sliced into **per window**. Fixed
+  count (not a price height) so `va_frac` — and therefore `acceptance` — is comparable
+  across any scale. More rows = finer POC/value-area resolution (and can nudge acceptance).
+- **`min_bars: 8`** — a window with fewer bars than this reads `UNCLEAR` (GRADE's honest "not
+  enough structure to judge"). Raise it to demand more evidence before labelling a regime.
+
+Tuning cheat-sheet:
+
+| change | effect |
+| --- | --- |
+| raise `e_cut` | fewer IMPULSE/GRIND (trend) reads; more CONSOL/WHIPSAW — a stricter trend filter |
+| lower `e_cut` | more windows read as directional (looser) |
+| raise `a_cut` | more IMPULSE/WHIPSAW (thin); harder to read "value accepted" |
+| lower `a_cut` | more GRIND/CONSOLIDATION (fat POC) |
+| bigger `n_rows` | finer profile; small shifts in POC / acceptance |
+| bigger `min_bars` | more early windows read UNCLEAR (waits for evidence) |
+
+### `consolidation` — the L2 tradeable-base detector
+
+```yaml
+strategy:
+  consolidation:
+    det_window: 120
+    state_window: 25
+    min_len: 15
+    max_age: 40
+```
+
+Finds the recent 1-minute **CONSOLIDATION** whose value-area edges (VAH/VAL) become the
+breakout levels the decider trades. It rolls GRADE over recent 1m bars, keeps the most
+recent CONSOLIDATION run, and grades it for VAH/VAL.
+
+- **`det_window: 120`** — how many recent 1m bars to scan for a base (≈ 2 hours).
+- **`state_window: 25`** — the rolling window (in bars) GRADE uses to label **each** 1m
+  bar's regime while scanning. Bigger = smoother per-bar state, slower to flip.
+- **`min_len: 15`** — the minimum run length (bars) of consecutive CONSOLIDATION to count as
+  a real base. Raise it to demand tighter, longer bases (fewer, higher-quality setups).
+- **`max_age: 40`** — ignore a base that *ended* more than this many bars ago (it's stale —
+  the breakout window has passed).
+
+> These use the same `regime` cutoffs above (the per-bar state comes from `grade()`), so a
+> regime change also reshapes what counts as a base. The per-bar state cache is keyed by the
+> regime knobs, so editing either section recomputes cleanly — never stale.
+
+### `decide` — the va_breakout entry rule
+
+```yaml
+strategy:
+  decide:
+    bias_str: 0.3
+    target_r: 2.0
+```
+
+The `va_breakout` decider (`src/strategy/decide/va_breakout.py`): in a session that is
+directional so far, when price breaks the 1m base's value area **in** the session's
+direction, propose the trade.
+
+- **`bias_str: 0.3`** — the **bias filter**: the minimum `|L1 strength|` (session `net ÷
+  range`, −1..+1) for the session to count as directional enough to trade. Raise it → only
+  strongly one-sided sessions qualify (fewer trades); lower it → trades in flatter sessions.
+- **`target_r: 2.0`** — the profit target in **R** (multiples of risk). The stop is the
+  opposite value-area edge (= 1R by construction), so `2.0` targets twice the risk. Raise for
+  a wider target (lower hit rate, bigger winners); lower for the reverse.
 
 ---
 

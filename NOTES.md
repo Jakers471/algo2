@@ -5,6 +5,37 @@ dated + timed and terse (≤50 lines). Split into `notes/` when this gets large.
 
 ---
 
+## 2026-07-07 18:xx — Strategy knobs → config (step 1 of the tune-and-see loop)
+
+**Context:** Jake's real goal for the strategy is a tight *tune-and-see* loop — nudge a
+knob, see it play out on the chart, fast. Talked through it: the right shape is **not**
+fast replay (that's for watching mechanism) but **overlay + repaint** — compute the
+strategy over the whole visible range once and draw regime bands / consolidation boxes /
+trade markers; change a knob → refresh → the chart recolors. Two gaps block it: (1) the
+tunable knobs were hardcoded in the frozen engine, (2) the strategy output isn't on the
+chart yet (only in the terminal monitor).
+
+**Did (step 1):** graduated every hardcoded strategy knob into `algo_config.yaml` —
+`strategy.regime` (grade cutoffs), `strategy.consolidation` (base detector),
+`strategy.decide` (bias/target). Kept `grade()` **pure**: cutoffs became parameters
+(defaults = old constants), and `build_snapshot`/the decider resolve from config + pass
+in. So config → live readings/regime/trades, no restart.
+
+**Caching decision (Jake's concern "I don't want cached shit"):** caches are fine *when
+keyed by everything the result depends on*. Bars are static (cache freely); regime state
+depends on (bars + cutoffs) → keyed the consolidation state cache by the regime knobs, so
+a knob change invalidates cleanly. Verified: knob change flips the reading
+(CONSOL→GRIND→WHIPSAW), cache holds both configs (95→190), default==explicit grade.
+
+**Regime knobs live now:** `e_cut` (efficiency → trend vs chop), `a_cut` (acceptance →
+fat vs thin POC), `n_rows`, `min_bars`. These drive BOTH scales + the base detector — the
+biggest lever. See [[strategy-pipeline-architecture]], [[va-breakout-graduation]].
+
+**Next (steps 2-3):** `/api/strategy` endpoint (pipeline across the range → drawable
+regime/consol/trades) + a chart overlay renderer → the loop exists. Perf follow-up: cache
+`config.load()` by file mtime (avoid a YAML read per bar); make the 120k 1m slice
+positional (kill the per-bar mask).
+
 ## 2026-07-05 15:xx — ATR wired in as an indicator (experimental)
 
 **Context:** explored NQ volatility via a run of throwaway artifacts (time-of-day

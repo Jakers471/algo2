@@ -110,11 +110,19 @@ def atr_config() -> dict:
 
 
 def strategy_config() -> dict:
-    """Pipeline config: which VERSION of each stage runs (`use` slots) + `readings`
-    knobs for deriving facts. Stage knobs (weights/thresholds) get added later."""
+    """Pipeline config: which VERSION of each stage runs (`use` slots) + the tunable
+    knobs for each concern (`readings`, `regime`, `consolidation`, `decide`). Every
+    numeric parameter the strategy runs on is resolved here from algo_config.yaml, so
+    editing the YAML + refreshing changes the readings/regime/trades with no restart.
+
+    Defaults equal the values previously hardcoded in the engine, so an unedited YAML
+    reproduces the prior behaviour exactly (change a knob = change the output)."""
     cfg = load().get("strategy", {})
     use = cfg.get("use", {}) or {}
     readings = cfg.get("readings", {}) or {}
+    regime = cfg.get("regime", {}) or {}
+    consolidation = cfg.get("consolidation", {}) or {}
+    decide = cfg.get("decide", {}) or {}
     return {
         "use": {
             "scorer": use.get("scorer", "v1"),
@@ -124,6 +132,25 @@ def strategy_config() -> dict:
         "readings": {
             "volume_window": int(readings.get("volume_window", 20)),
             "volume_fast": int(readings.get("volume_fast", 3)),
+        },
+        # regime — the GRADE state classifier's cutoffs (passed into grade()).
+        "regime": {
+            "n_rows": int(regime.get("n_rows", 24)),
+            "e_cut": float(regime.get("e_cut", 0.38)),
+            "a_cut": float(regime.get("a_cut", 0.55)),
+            "min_bars": int(regime.get("min_bars", 8)),
+        },
+        # consolidation — the L2 tradeable-base detector (breakout levels).
+        "consolidation": {
+            "det_window": int(consolidation.get("det_window", 120)),
+            "state_window": int(consolidation.get("state_window", 25)),
+            "min_len": int(consolidation.get("min_len", 15)),
+            "max_age": int(consolidation.get("max_age", 40)),
+        },
+        # decide — the va_breakout entry rule.
+        "decide": {
+            "bias_str": float(decide.get("bias_str", 0.3)),
+            "target_r": float(decide.get("target_r", 2.0)),
         },
     }
 

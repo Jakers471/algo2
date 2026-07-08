@@ -23,6 +23,12 @@ E_CUT = 0.38       # efficiency >= this = directional (progress)
 A_CUT = 0.55       # acceptance  >= this = accepted (fat POC)
 MIN_BARS = 8       # fewer bars than this -> UNCLEAR
 
+# These four are the regime knobs. They are PARAMETERS of grade() (defaults above),
+# NOT read from config here — grade() must stay pure OHLCV-in/values-out (it is the
+# frozen research core, reused by chart/backtest/research). Callers in src/strategy
+# resolve them from algo_config.yaml (strategy.regime) and pass them in, so the engine
+# is tunable without the engine ever importing config. See src/config.strategy_config.
+
 
 @dataclass
 class Grade:
@@ -72,17 +78,22 @@ def _profile(highs, lows, vols, n_rows=N_ROWS):
     return lo, rs, poc, va_lo, va_hi
 
 
-def _classify(eff, acc, direction, ok):
+def _classify(eff, acc, direction, ok, e_cut=E_CUT, a_cut=A_CUT):
     if not ok:
         return "UNCLEAR"
     dirn = "UP" if direction == "bull" else "DN"
-    if eff >= E_CUT:
-        return ("GRIND " if acc >= A_CUT else "IMPULSE ") + dirn
-    return "CONSOLIDATION" if acc >= A_CUT else "WHIPSAW"
+    if eff >= e_cut:
+        return ("GRIND " if acc >= a_cut else "IMPULSE ") + dirn
+    return "CONSOLIDATION" if acc >= a_cut else "WHIPSAW"
 
 
-def grade(bars, atr: float | None = None) -> Grade:
-    """OHLCV DataFrame (>=1 row) -> Grade. `atr` optional, only for `scale`."""
+def grade(bars, atr: float | None = None, n_rows: int = N_ROWS, e_cut: float = E_CUT,
+          a_cut: float = A_CUT, min_bars: int = MIN_BARS) -> Grade:
+    """OHLCV DataFrame (>=1 row) -> Grade. `atr` optional, only for `scale`.
+
+    `n_rows`/`e_cut`/`a_cut`/`min_bars` are the regime knobs (default = the module
+    constants); callers pass config-resolved values so grade() is tunable while
+    staying a pure function (no config import). Same inputs -> same Grade."""
     o = bars["open"].to_numpy(float)
     h = bars["high"].to_numpy(float)
     l = bars["low"].to_numpy(float)
@@ -98,16 +109,16 @@ def grade(bars, atr: float | None = None) -> Grade:
     signs = np.sign(diffs); signs = signs[signs != 0]
     swings = int((np.diff(signs) != 0).sum()) if len(signs) > 1 else 0
 
-    base, rs, poc_i, va_lo, va_hi = _profile(h, l, v)
+    base, rs, poc_i, va_lo, va_hi = _profile(h, l, v, n_rows)
     poc = base + (poc_i + 0.5) * rs
     vah = base + (va_hi + 1) * rs
     val = base + va_lo * rs
-    va_frac = (va_hi - va_lo + 1) / N_ROWS
+    va_frac = (va_hi - va_lo + 1) / n_rows
     acceptance = 1 - va_frac
 
     direction = "bull" if net > 0 else "bear" if net < 0 else "flat"
     efficiency = abs(net) / travel
-    state = _classify(efficiency, acceptance, direction, n >= MIN_BARS)
+    state = _classify(efficiency, acceptance, direction, n >= min_bars, e_cut, a_cut)
 
     return Grade(
         direction=direction, net=net, range=rng, strength=net / rng,

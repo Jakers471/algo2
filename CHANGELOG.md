@@ -5,6 +5,18 @@ All notable changes to this project. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **Strategy knobs graduated into `algo_config.yaml` (live tuning, no restart).** The regime
+  cutoffs, the L2 base detector, and the entry rule were hardcoded in the frozen engine; they
+  now live under `strategy.regime` (`n_rows`/`e_cut`/`a_cut`/`min_bars`), `strategy.consolidation`
+  (`det_window`/`state_window`/`min_len`/`max_age`), and `strategy.decide` (`bias_str`/`target_r`).
+  `grade()` stays a pure function — the cutoffs became parameters (defaults = the old constants),
+  and `build_snapshot`/the decider resolve them from config and pass them in, so editing the YAML +
+  refreshing changes the readings/regime/trades with no restart. Defaults reproduce prior behaviour
+  exactly (verified: `grade` default == explicit). The consolidation per-bar state cache is now
+  keyed by the regime knobs, so a config change invalidates cleanly (never stale). Documented in
+  `algo_config.README.md`. First step toward the tune-and-see chart loop (config → strategy overlay).
+
 ### Fixed
 - **QC LEAN — hard EOD flatten (multi-day-hold leak).** The session-flatten only runs when a 5m
   bar arrives, so a position open into a weekend/data-gap could ride for days (up to 89h / 3.7
