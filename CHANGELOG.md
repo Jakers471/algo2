@@ -5,6 +5,15 @@ All notable changes to this project. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **Replay monitor: stop misreporting a slow server as "unreachable".** `/api/replay/state` does real
+  work per poll (steps the pipeline; on replay-start/session-change it rebuilds from the session start —
+  many bars of leg detection + grades), which exceeded the monitor's 2s poll timeout, so it flashed
+  "server unreachable" between valid rows. `fetch()` now uses a 15s timeout and distinguishes a
+  *timeout/busy* response (skip the tick quietly, keep replay state) from a real *connection error*
+  (down); the "unreachable" warning only fires after 4 consecutive connection failures, and prints
+  "reconnected" on recovery. Fixes the flapping in `--view horizontal`.
+
 ### Added
 - **Chart server: one-per-port guard + quiet logs.** Starting `chart/server.py` when one is already
   running no longer silently stacks a second (the cause of duplicate servers piling up — killing the

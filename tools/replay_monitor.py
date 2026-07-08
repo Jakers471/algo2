@@ -37,6 +37,7 @@ import argparse
 import json
 import sys
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
@@ -320,9 +321,23 @@ def funnel(st):
 
 # ---- polling -------------------------------------------------------------
 def fetch(endpoint):
+    """Poll the endpoint. Returns the JSON dict, or None for a connection error
+    (server truly down) vs. False for a timeout/slow response (server busy — e.g.
+    rebuilding the pipeline from a session start). The caller treats those differently
+    so a slow bar isn't misreported as 'unreachable'."""
     try:
-        with urllib.request.urlopen(endpoint, timeout=2) as r:
+        # Generous timeout: a session-rebuild poll steps many bars (leg detection +
+        # grades) and can take several seconds — that's busy, not down.
+        with urllib.request.urlopen(endpoint, timeout=15) as r:
             return json.loads(r.read().decode())
+    except urllib.error.URLError as e:
+        # Connection refused / name resolution -> down. Timeout -> busy.
+        reason = getattr(e, "reason", None)
+        if isinstance(reason, TimeoutError) or isinstance(e, urllib.error.HTTPError):
+            return False
+        return None
+    except (TimeoutError, ConnectionError):
+        return False
     except Exception:
         return None
 
@@ -412,16 +427,27 @@ def main():
     was_active = last_asof = None
     was_active = False
     warned_down = False
+    misses = 0
+    MISS_LIMIT = 4          # consecutive connection failures before we call it "down"
 
     while True:
         st = fetch(endpoint)
+        if st is False:
+            # Busy/slow poll (server is mid-compute, e.g. rebuilding from a session
+            # start). NOT a disconnect — skip this tick quietly, keep replay state.
+            time.sleep(period)
+            continue
         if st is None:
-            if not warned_down:
+            misses += 1
+            if misses >= MISS_LIMIT and not warned_down:
                 print("… server unreachable (is chart/server.py running?)")
                 warned_down = True
             time.sleep(0.5)
             continue
+        if warned_down:
+            print("… reconnected")
         warned_down = False
+        misses = 0
 
         active = bool(st.get("active"))
         if active and not was_active:
