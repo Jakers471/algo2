@@ -23,6 +23,30 @@
     return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`;
   }
 
+  // The replay book (from /api/replay/state) -> drawable trades: the open position (live,
+  // no exit yet) + the last closed trade. book.to_dict exposes exactly these two.
+  function bookToTrades(st) {
+    const book = (st && st.book) || {};
+    const out = [];
+    const last = book.last;
+    if (last) {
+      const long = last.direction === 'long';
+      out.push({
+        direction: last.direction, entry: last.entry, exit: last.exit, R: last.R,
+        entry_time: last.opened_asof, exit_time: last.closed_asof,
+        stop: long ? last.entry - last.risk : last.entry + last.risk, open: false,
+      });
+    }
+    const pos = book.position;
+    if (pos) {
+      out.push({
+        direction: pos.direction, entry: pos.entry, stop: pos.stop, target: pos.target,
+        entry_time: pos.opened_asof, open: true,
+      });
+    }
+    return out;
+  }
+
   // ---- canvas primitive ----------------------------------------------------
   class StrategyRenderer {
     constructor(src) { this._src = src; }
@@ -64,6 +88,25 @@
           }
 
           if (!vis.trades || xe === null || ye === null) continue;
+
+          // --- OPEN position (replay live): entry + stop/target lines to 'now', no exit ---
+          if (tr.open) {
+            let xNow = this._src._asof != null ? ts.timeToCoordinate(this._src._asof) : null;
+            if (xNow === null) xNow = (scope.mediaSize && scope.mediaSize.width) || 1e5;
+            ctx.save(); ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+            const ys = series.priceToCoordinate(tr.stop);
+            const yt = tr.target != null ? series.priceToCoordinate(tr.target) : null;
+            if (ys !== null) { ctx.strokeStyle = rgba(SHORT, 0.7); ctx.beginPath(); ctx.moveTo(xe, ys); ctx.lineTo(xNow, ys); ctx.stroke(); }
+            if (yt !== null) { ctx.strokeStyle = rgba(WIN, 0.7); ctx.beginPath(); ctx.moveTo(xe, yt); ctx.lineTo(xNow, yt); ctx.stroke(); }
+            ctx.restore();
+            ctx.fillStyle = long ? LONG : SHORT;
+            ctx.beginPath();
+            const so = 5;
+            if (long) { ctx.moveTo(xe, ye - so); ctx.lineTo(xe - so, ye + so); ctx.lineTo(xe + so, ye + so); }
+            else { ctx.moveTo(xe, ye + so); ctx.lineTo(xe - so, ye - so); ctx.lineTo(xe + so, ye - so); }
+            ctx.closePath(); ctx.fill();
+            continue;
+          }
 
           // --- stop line (faint) ---
           if (xx !== null) {
@@ -116,6 +159,7 @@
     constructor(visible) {
       this._trades = [];
       this._loading = false;
+      this._asof = null;               // current replay bar (extends the open position's lines)
       this._visible = visible;         // { trades: bool, bases: bool }
       this._chart = null; this._series = null; this._requestUpdate = null;
       this._views = [new StrategyPaneView(this)];
@@ -127,6 +171,7 @@
     repaint() { if (this._requestUpdate) this._requestUpdate(); }
     setTrades(t) { this._trades = t; this._loading = false; this.repaint(); }
     setLoading(on) { this._loading = on; this.repaint(); }
+    setAsof(a) { this._asof = a; }
     setVisible(id, on) { this._visible[id] = on; this.repaint(); }
   }
 
@@ -153,8 +198,21 @@
 
       async function update(data, tf, opts) {
         const id = ++reqId;
-        // Replay drives its own per-bar view; the batch overlay is for the static chart.
-        if (opts && opts.asof) { prim.setTrades([]); return; }
+        // REPLAY: draw the live book (open position + last closed trade) as it unfolds,
+        // from the same /api/replay/state the terminal monitor reads.
+        if (opts && opts.asof) {
+          prim.setAsof(opts.asof);
+          try {
+            const res = await fetch('/api/replay/state', { cache: 'no-store' });
+            const st = res.ok ? await res.json() : null;
+            if (id !== reqId) return;
+            prim.setTrades(bookToTrades(st));
+          } catch (_) {
+            if (id === reqId) prim.setTrades([]);
+          }
+          return;
+        }
+        // STATIC chart: the whole-range batch overlay (all trades + their bases).
         prim.setLoading(true);
         try {
           const res = await fetch(

@@ -370,10 +370,17 @@ def _replay_pipeline():
                 bars = d5.index[(d5.index >= sess_start) & (d5.index <= asof_ts)]
             else:
                 bars = d5.index[(d5.index > rd["asof"]) & (d5.index <= asof_ts)]
+            # Bounded trailing windows (same as _strategy_batch) so each step is CONSTANT
+            # work, not O(full slice): build_snapshot ran session_instances over the whole
+            # growing 10k-bar slice per bar — the replay-poll slowdown. W5/W1 exceed the
+            # longest session, so snapshots (and the book) are identical.
+            d5_idx, d1_idx = d5.index, d1.index
             for t in bars:                                      # step the book forward
+                p5 = int(d5_idx.searchsorted(t, side="right"))
+                p1 = int(d1_idx.searchsorted(t, side="right"))
                 rd["result"] = rd["driver"].step(
-                    d5.loc[d5.index <= t], st["symbol"], st["tf"],
-                    ltf_df=d1.loc[d1.index <= t])
+                    d5.iloc[max(0, p5 - _W5):p5], st["symbol"], st["tf"],
+                    ltf_df=d1.iloc[max(0, p1 - _W1):p1])
             rd["asof"] = asof_ts
             result = rd["result"]
             if result is None or result.get("snapshot") is None:

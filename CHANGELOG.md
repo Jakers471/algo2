@@ -6,6 +6,19 @@ All notable changes to this project. Format loosely follows
 ## [Unreleased]
 
 ### Fixed
+- **Replay is fast now (server + chart), and the strategy overlay shows live during replay.**
+  - *Chart candles:* the replay loop re-`setData`'d all revealed bars every frame (O(n²) as bars
+    pile up — the "slow once candles accumulate" bug). Forward steps now `update()` a single bar
+    (O(1)); a backward scrub/slider jump still re-loads.
+  - *Server replay pipeline:* each poll stepped `build_snapshot` over the full growing 10k-bar
+    slice per bar (O(n²), the slow polls that tripped the monitor timeout). Now uses bounded
+    trailing 5m/1m windows + positional slicing (same as `/api/strategy`) → O(range), identical
+    snapshots/book.
+  - *Strategy overlay during replay:* it previously drew only on the static chart and blanked during
+    replay, so a trade firing in the monitor showed nothing on the chart. It now reads the live
+    replay book (`/api/replay/state`) and draws the open position (entry + stop/target lines to the
+    current bar) and the last closed trade (entry→exit, R) as replay unfolds. (Shows the current +
+    last trade; the full-session history is on the static overlay after you exit replay.)
 - **Replay monitor: stop misreporting a slow server as "unreachable".** `/api/replay/state` does real
   work per poll (steps the pipeline; on replay-start/session-change it rebuilds from the session start —
   many bars of leg detection + grades), which exceeded the monitor's 2s poll timeout, so it flashed
