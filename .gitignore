@@ -17,6 +17,8 @@ lean/lean.json
 lean/.idea/
 lean/.vscode/
 lean/vabreakout/__pycache__/
+# local duplicate of experiments/engine (scratch copy under lean/; keep on disk, never commit)
+lean/engine/
 experiments/engine/out/pipeline_backtest.png
 experiments/engine/out/pipeline_val_log.txt
 tools/csverify/bin/
