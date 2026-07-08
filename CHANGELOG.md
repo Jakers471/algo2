@@ -5,6 +5,17 @@ All notable changes to this project. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **`experiments/har_vol/` — autoregressive volatility model on NQ (HAR-RV).** Answers "can we
+  autoregress the NQ series?" on the part that's actually forecastable: volatility, not price
+  (price is a random walk → AR on returns ≈ 0 OOS). `har_rv.py` builds daily realized vol from
+  intraday squared log-returns and runs Corsi's HAR-RV (daily/weekly/monthly lags) as a
+  strict expanding-window walk-forward, benchmarked vs random-walk / weekly-avg / EWMA baselines
+  (reports MSE/MAE/corr/OOS-R²-vs-RW + fitted coefficients). `verify_logic.py` is a pure-stdlib
+  (no numpy/pandas/data) proof of the OLS + walk-forward: recovers a known fit, detects real
+  predictability, and does *not* fabricate skill on random-walk data (anti-lookahead guard). Needs
+  the gitignored `data/NQ/*.parquet` to run on real data; the verifier runs anywhere.
+
 ### Fixed
 - **Replay is fast now (server + chart), and the strategy overlay shows live during replay.**
   - *Chart candles:* the replay loop re-`setData`'d all revealed bars every frame (O(n²) as bars
