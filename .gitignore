@@ -25,6 +25,8 @@ tools/csverify/bin/
 tools/csverify/obj/
 tools/csverify/input.json
 tools/csverify/output.json
+# stray duplicate of tools/csverify (+ a replay_monitor copy), mostly build artifacts — never commit
+templates/
 experiments/engine/out/overnight_2015/
 experiments/engine/out/overnight_2015_log.txt
 
