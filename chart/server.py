@@ -39,6 +39,7 @@ from src import config as algo_config  # noqa: E402
 from src.indicators.sessions import compute_sessions, session_instances  # noqa: E402
 from src.indicators.session_structure import compute_session_structure  # noqa: E402
 from src.indicators.volume_profile import compute_volume_profile  # noqa: E402
+from src.indicators.ltf_volume_profile import compute_ltf_volume_profile  # noqa: E402
 from src.indicators.range_hop import compute_range_hop  # noqa: E402  (TEMP experiment)
 from src.indicators.volume import compute_volume  # noqa: E402
 from src.indicators.moving_average import compute_moving_averages  # noqa: E402
@@ -227,6 +228,20 @@ def api_volume_profile():
     result = compute_volume_profile(
         _asof_slice(_load_df(symbol, tf, limit)), row_size=row_size, value_area_pct=va
     )
+    return jsonify(symbol=symbol, tf=tf, **result)
+
+
+@app.route("/api/indicators/ltf_volume_profile")
+def api_ltf_volume_profile():
+    """The 1-minute (L2) volume profile over its recent window — the drawable form
+    of the monitor's "1min volume profile" box. Always computed on 1m data (the L2
+    scale) regardless of the displayed tf; honors `asof` so it tracks replay."""
+    parsed = _request_params()
+    if len(parsed) == 2:
+        return parsed
+    symbol, tf, _limit = parsed
+    d1 = _asof_slice(_load_df(symbol, "1m", 200_000))
+    result = compute_ltf_volume_profile(d1)
     return jsonify(symbol=symbol, tf=tf, **result)
 
 

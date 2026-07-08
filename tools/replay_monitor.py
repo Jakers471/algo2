@@ -1,30 +1,30 @@
 #!/usr/bin/env python3
-"""tools/replay_monitor.py — live readout of the chart's replay, in a terminal.
+"""tools/replay_monitor.py - live readout of the chart's replay, in a terminal.
 
 Run alongside the chart server (`python chart/server.py`). It polls
 `/api/replay/state`; when you hit **Replay** in the chart it streams the strategy
 pipeline for each bar as replay steps forward, and prints `replay ended` on exit.
 
-PURE READER — never drives the chart, so it can't slow replay. The chart
+PURE READER - never drives the chart, so it can't slow replay. The chart
 fire-and-forgets its cursor to the server; the server runs the pipeline
-(src.strategy: snapshot → score → decide → manage — the single source of truth)
+(src.strategy: snapshot -> score -> decide -> manage - the single source of truth)
 when we poll and returns {snapshot, scores, intent, action}.
 
 VIEWS (pick with --view; same data, different layout):
-  horizontal  a bucketed grid — one boxed column-group per phase, one row per bar,
-              each value inline-labeled (px/POC/vol/conv/…) so a row reads on its
+  horizontal  a bucketed grid - one boxed column-group per phase, one row per bar,
+              each value inline-labeled (px/POC/vol/conv/...) so a row reads on its
               own (the snapshot table extended rightward through the pipeline). DEFAULT.
-  vertical    a 'funnel' block per bar — phases stacked top→bottom.
+  vertical    a 'funnel' block per bar - phases stacked top->bottom.
   snapshot    just the SNAPSHOT facts table (no pipeline columns).
 
-PHASE PALETTE (consistent across views): SNAPSHOT=cyan · SCORE=yellow ·
-DECIDE=magenta · MANAGE=blue. It tints each phase's borders/gutter+label so a
+PHASE PALETTE (consistent across views): SNAPSHOT=cyan - SCORE=yellow -
+DECIDE=magenta - MANAGE=blue. It tints each phase's borders/gutter+label so a
 phase is the same color everywhere. Value colors are semantic (POC yellow,
 VAH green / VAL red, conviction green once it clears threshold, dir/setup
 green-long/red-short, stop red / target green).
 
-NOTE: score/decide/manage are stubs today, so their cells are empty (`—`) until
-those phases get logic — the layout is already in place, ready to light up.
+NOTE: score/decide/manage are stubs today, so their cells are empty (`-`) until
+those phases get logic - the layout is already in place, ready to light up.
 
 Usage:
     python tools/replay_monitor.py                     # horizontal (default)
@@ -52,12 +52,12 @@ def c(s, code):
 
 WHT, GRAY, DIM = "1", "90", "2"
 YEL, GRN, RED = "33", "32", "31"
-# Phase identity colors (borders / gutters / labels) — consistent across views.
+# Phase identity colors (borders / gutters / labels) - consistent across views.
 # The SNAPSHOT facts split into per-SOURCE boxes (PRICE / PROFILE / VOLUME) that
 # share the cyan family (they're all facts); the pipeline phases differ.
-PHASE_C = {"PRICE": "96", "PROFILE": "96", "VOLUME": "96",
-           "STRUCT 5m": "96", "STRUCT 1m": "96", "CONSOL": "96", "SESS H/L": "96", "SNAPSHOT": "96",
-           "SCORE": "93", "DECIDE": "95", "MANAGE": "94"}
+PHASE_C = {"PRICE": "96", "5min volume profile": "96", "VOLUME": "96",
+           "STRUCT 5m": "96", "STRUCT 1m": "96", "CONSOL": "96", "1min volume profile": "96", "SNAPSHOT": "96",
+           "SCORE": "93", "DECIDE": "95", "MANAGE": "94", "TRADE": "94"}
 SESS_C = {"Asia": "94", "London": "93", "NY": "95"}
 
 
@@ -112,32 +112,33 @@ def _sig(sigs, key):
 # "" = no label (self-evident cells: time, session, direction, setup, state).
 # SNAPSHOT facts are split into boxes BY SOURCE: PRICE (the bar), PROFILE (from the
 # volume-profile indicator), VOLUME (from the time-based volume indicator). Add a
-# new reading → add a box here.
+# new reading -> add a box here.
 # Column order packs the ALWAYS-filled fact boxes together on the left (so rows read
 # dense); the sometimes-empty ones (CONSOL base, DECIDE/MANAGE trade) cluster on the
 # right, so a no-trade bar's blanks fall at the edge instead of leaving a mid-row void.
 # Widths are trimmed to content; the STRUCT state field is 10 (CONSOLIDATION -> CONSOL).
 PHASES = [
     ("PRICE",    [("", 15, "<"), ("px", 7, ">")]),
-    ("PROFILE",  [("", 6, "<"), ("POC", 7, ">"), ("VAH", 7, ">"), ("VAL", 7, ">"), ("vol", 5, ">")]),
-    ("VOLUME",   [("bar", 5, ">"), ("rvol", 4, ">"), ("vexp", 4, ">"), ("Δ", 6, ">")]),
+    ("VOLUME",   [("bar", 5, ">"), ("rvol", 4, ">"), ("vexp", 4, ">"), ("d", 6, ">")]),
+    # 5m PROFILE next to 5m STRUCT: session POC/VAH/VAL + cumulative vol + session
+    # high/low (SH green / SL red).  1m VP next to STRUCT 1m: the 1m structure's profile.
+    ("5min volume profile",  [("", 6, "<"), ("POC", 7, ">"), ("VAH", 7, ">"), ("VAL", 7, ">"), ("vol", 5, ">"), ("SH", 7, ">"), ("SL", 7, ">")]),
     ("STRUCT 5m",[("", 10, "<"), ("str", 5, ">"), ("eff", 4, ">"), ("acc", 4, ">")]),
+    ("1min volume profile",    [("POC", 7, ">"), ("H", 7, ">"), ("L", 7, ">"), ("VAH", 7, ">"), ("VAL", 7, ">")]),
     ("STRUCT 1m",[("", 10, "<"), ("str", 5, ">"), ("eff", 4, ">"), ("acc", 4, ">")]),
-    # Raw H/L + swing (BOS) sH/sL, each labeled (green = high / red = low).
-    ("SESS H/L", [("H", 7, ">"), ("L", 7, ">"), ("sH", 7, ">"), ("sL", 7, ">")]),
     ("CONSOL",   [("", 7, ">"), ("", 7, ">"), ("len", 3, ">"), ("ago", 3, ">")]),
-    # DECIDE unlabeled: dir L/S, then entry (white) / stop (red) / target (green) — color
+    # DECIDE unlabeled: dir L/S, then entry (white) / stop (red) / target (green) - color
     # is the label. MANAGE trimmed to its longest state ("exit target +2.0R").
     ("DECIDE",   [("", 1, "<"), ("", 7, ">"), ("", 7, ">"), ("", 7, ">")]),
     ("MANAGE",   [("", 18, "<")]),
 ]
 
-# The fact boxes (left of the pipeline stages) — used by the 'snapshot' view.
+# The fact boxes (left of the pipeline stages) - used by the 'snapshot' view.
 FACT_PHASES = 7
 
 
 def _struct_cells(stc):
-    """One GRADE structure box (state / str / eff / acc) — shared by both scales."""
+    """One GRADE structure box (state / str / eff / acc) - shared by both scales."""
     stc = stc or {}
     state = stc.get("state", "")
     scol = (GRN if state.endswith("UP") else RED if state.endswith("DN")
@@ -156,11 +157,12 @@ def _phase_cells(name, st):
     snap, vp, sc, intent, action = _parts(st)
     if name == "PRICE":                                          # the bar itself
         return [(fmt_when(st["asof"]), WHT), (lvl(snap.get("price")), WHT)]
-    if name == "PROFILE":                                        # volume-profile indicator
+    if name == "5min volume profile":                                        # volume-profile indicator
         sess = vp.get("session", "")
         return [(sess, SESS_C.get(sess, DIM)), (lvl(vp.get("poc")), YEL),
                 (lvl(vp.get("vah")), GRN), (lvl(vp.get("val")), RED),
-                (short_vol(vp.get("volume")), DIM)]              # session cumulative
+                (short_vol(vp.get("volume")), DIM),              # session cumulative
+                (lvl(vp.get("high")), GRN), (lvl(vp.get("low")), RED)]  # SH / SL session extremes
     if name == "VOLUME":                                         # time-based volume indicator
         vr = snap.get("volume") or {}
         d, up = vr.get("delta"), vr.get("up")
@@ -171,7 +173,7 @@ def _phase_cells(name, st):
                 (signed_vol(d), GRN if (d or 0) >= 0 else RED)]            # recent delta
     if name == "STRUCT 5m":                                      # GRADE @ L1 (5m session)
         return _struct_cells(snap.get("structure"))
-    if name == "STRUCT 1m":                                      # GRADE @ L2 (recent 1m) — fractal
+    if name == "STRUCT 1m":                                      # GRADE @ L2 (recent 1m) - fractal
         return _struct_cells(snap.get("structure_ltf"))
     if name == "CONSOL":                                         # L2 tradeable base (fact)
         cn = snap.get("consolidation") or {}
@@ -179,10 +181,10 @@ def _phase_cells(name, st):
             return [("", GRN), ("", RED), ("", DIM), ("", DIM)]  # no base right now
         return [(lvl(cn.get("vah")), GRN), (lvl(cn.get("val")), RED),   # VAH green / VAL red
                 (str(cn.get("len", "")), DIM), (str(cn.get("ended_ago", "")), DIM)]
-    if name == "SESS H/L":                                       # session raw + swing (BOS) H/L
-        ss = snap.get("session_structure") or {}
-        return [(lvl(ss.get("high")), GRN), (lvl(ss.get("low")), RED),          # raw extremes
-                (lvl(ss.get("swing_high")), GRN), (lvl(ss.get("swing_low")), RED)]  # swing/BOS
+    if name == "1min volume profile":                                          # 1m structure volume-profile levels
+        s = snap.get("structure_ltf") or {}
+        return [(lvl(s.get("poc")), YEL), (lvl(s.get("high")), GRN), (lvl(s.get("low")), RED),
+                (lvl(s.get("vah")), GRN), (lvl(s.get("val")), RED)]  # POC yellow - H/VAH grn - L/VAL red
     if name == "SCORE":
         conv = sc.get("conviction", 0.0)
         sigs = sc.get("signals") or {}
@@ -196,8 +198,8 @@ def _phase_cells(name, st):
             return [(d[0].upper() if d else "", GRN if d == "long" else RED),   # L / S
                     (lvl(intent.get("entry")), WHT), (lvl(intent.get("stop")), RED),
                     (lvl(intent.get("target")), GRN)]
-        return [("—", DIM), ("", WHT), ("", WHT), ("", WHT)]
-    # MANAGE — the trade lifecycle (from the book)
+        return [("-", DIM), ("", WHT), ("", WHT), ("", WHT)]
+    # MANAGE - the trade lifecycle (from the book)
     kind = action.get("kind") or "none"
     d = action.get("detail") or {}
     dr = (d.get("direction") or "").upper()
@@ -209,7 +211,7 @@ def _phase_cells(name, st):
     if kind == "exit":
         R = d.get("R", 0.0)
         return [(f"exit {d.get('reason','')} {R:+.1f}R", GRN if R > 0 else RED)]
-    return [("—", DIM)]
+    return [("-", DIM)]
 
 
 # ---- horizontal / snapshot (bucketed grid) -------------------------------
@@ -240,28 +242,31 @@ def _cells(pairs, cols):
     return " ".join(out)
 
 
+# Borders are ASCII (+ - |). Unicode box-drawing glyphs (the U+2500 block) are East-
+# Asian-Width "Ambiguous" - many Windows terminals render them DOUBLE-width, so a border
+# row of ~240 of them silently doubles past the window width and wraps (data rows, with
+# few glyphs, looked fine). ASCII is guaranteed width-1 everywhere, so the grid can't desync.
 def _assemble(bucket_strs, phases):
     out = ""
     for (name, _), bs in zip(phases, bucket_strs):
-        out += c("┊", PHASE_C[name]) + bs
-    return out + c("┊", GRAY)
+        out += c("|", PHASE_C[name]) + bs
+    return out + c("|", GRAY)
 
 
 def top_border(phases):
     out = ""
     for i, (name, cols) in enumerate(phases):
-        j = "┌" if i == 0 else "┬"
         w = _inner(cols)
-        lbl = f"─ {name} "
-        out += c(j, PHASE_C[name]) + c(lbl + "─" * (w - len(lbl)), PHASE_C[name])
-    return out + c("┐", GRAY)
+        lbl = f"- {name} "
+        out += c("+", PHASE_C[name]) + c(lbl + "-" * (w - len(lbl)), PHASE_C[name])
+    return out + c("+", GRAY)
 
 
-def rule(phases, left, mid, right):
+def rule(phases):
     out = ""
-    for i, (name, cols) in enumerate(phases):
-        out += c(left if i == 0 else mid, PHASE_C[name]) + c("─" * _inner(cols), GRAY)
-    return out + c(right, GRAY)
+    for name, cols in phases:
+        out += c("+", PHASE_C[name]) + c("-" * _inner(cols), GRAY)
+    return out + c("+", GRAY)
 
 
 def data_row(st, phases):
@@ -275,7 +280,7 @@ def funnel(st):
     when = fmt_when(st["asof"])
     W = 64
     pad = " " * max(1, W - len(when) - len(sym) - len(tf) - 8)
-    head = f"{c('◆', GRAY)} {c(when, WHT)}{pad}{c(f'{sym} · {tf}', GRAY)}"
+    head = f"{c('*', GRAY)} {c(when, WHT)}{pad}{c(f'{sym} - {tf}', GRAY)}"
 
     def row(gutter, phase, body):
         col = PHASE_C[phase]
@@ -285,18 +290,18 @@ def funnel(st):
     vr = snap.get("volume") or {}
     px_txt = c("px " + lvl(snap.get("price")), WHT)
     if vp:
-        sess_block = (f"   {c(sess, SESS_C.get(sess, DIM))} · POC {c(lvl(vp.get('poc')), YEL)} · "
-                      f"VAH {c(lvl(vp.get('vah')), GRN)} · VAL {c(lvl(vp.get('val')), RED)} · "
+        sess_block = (f"   {c(sess, SESS_C.get(sess, DIM))} - POC {c(lvl(vp.get('poc')), YEL)} - "
+                      f"VAH {c(lvl(vp.get('vah')), GRN)} - VAL {c(lvl(vp.get('val')), RED)} - "
                       f"{c('vol ' + short_vol(vp.get('volume')), DIM)}")
     else:
         sess_block = "   " + c("no session yet", DIM)
     if vr:
         dd = vr.get("delta")
         _bc = GRN if vr.get("up") is True else RED if vr.get("up") is False else DIM
-        vol_txt = ("   " + c("bar " + short_vol(vr.get("bar")), _bc) + " · "
-                   + c("rvol %.1f" % vr["rvol"], WHT) + " · "
-                   + c("vexp %.1f" % vr["vexp"], WHT) + " · "
-                   + c("Δ " + signed_vol(dd), GRN if (dd or 0) >= 0 else RED))
+        vol_txt = ("   " + c("bar " + short_vol(vr.get("bar")), _bc) + " - "
+                   + c("rvol %.1f" % vr["rvol"], WHT) + " - "
+                   + c("vexp %.1f" % vr["vexp"], WHT) + " - "
+                   + c("d " + signed_vol(dd), GRN if (dd or 0) >= 0 else RED))
     else:
         vol_txt = ""
     s_body = px_txt + sess_block + vol_txt
@@ -309,38 +314,38 @@ def funnel(st):
         f"breakout {_sig(sigs, 'breakout')}" if "breakout" in sigs else "",
         f"location {_sig(sigs, 'location')}" if "location" in sigs else "",
     ) if p]
-    sig_txt = c(" · ".join(parts), DIM) if parts else c("no signals yet", DIM)
-    dir_txt = c(d, GRN if d == "long" else RED) + " · " if d else ""
+    sig_txt = c(" - ".join(parts), DIM) if parts else c("no signals yet", DIM)
+    dir_txt = c(d, GRN if d == "long" else RED) + " - " if d else ""
     sc_body = f"{c('conv %.2f' % conv, GRN if conv >= 0.60 else WHT)}   {dir_txt}{sig_txt}"
 
     if intent:
         di = intent.get("direction")
-        d_body = (f"{c(di.upper() if di else '', GRN if di == 'long' else RED)} · "
-                  f"entry {c(lvl(intent.get('entry')), WHT)} · stop {c(lvl(intent.get('stop')), RED)} · "
+        d_body = (f"{c(di.upper() if di else '', GRN if di == 'long' else RED)} - "
+                  f"entry {c(lvl(intent.get('entry')), WHT)} - stop {c(lvl(intent.get('stop')), RED)} - "
                   f"target {c(lvl(intent.get('target')), GRN)}")
     else:
-        d_body = c("— no setup —", DIM)
+        d_body = c("- no setup -", DIM)
 
     kind = action.get("kind") or ""
     m_body = c("flat" if kind in ("", "none") else kind,
                {"arm": YEL, "activate": GRN, "exit": RED}.get(kind, DIM))
 
     return "\n".join([head,
-                      row("│", "SNAPSHOT", s_body),
-                      row("│", "SCORE", sc_body),
-                      row("│", "DECIDE", d_body),
-                      row("╰", "MANAGE", m_body)])
+                      row("|", "SNAPSHOT", s_body),
+                      row("|", "SCORE", sc_body),
+                      row("|", "DECIDE", d_body),
+                      row("+", "MANAGE", m_body)])
 
 
 # ---- polling -------------------------------------------------------------
 def fetch(endpoint):
     """Poll the endpoint. Returns the JSON dict, or None for a connection error
-    (server truly down) vs. False for a timeout/slow response (server busy — e.g.
+    (server truly down) vs. False for a timeout/slow response (server busy - e.g.
     rebuilding the pipeline from a session start). The caller treats those differently
     so a slow bar isn't misreported as 'unreachable'."""
     try:
         # Generous timeout: a session-rebuild poll steps many bars (leg detection +
-        # grades) and can take several seconds — that's busy, not down.
+        # grades) and can take several seconds - that's busy, not down.
         with urllib.request.urlopen(endpoint, timeout=15) as r:
             return json.loads(r.read().decode())
     except urllib.error.URLError as e:
@@ -368,41 +373,43 @@ def _enable_ansi():
 def _legend() -> str:
     """A guide to what every output column/field means (printed by --legend)."""
     rows = [
-        ("time", "bar time (UTC) — the as-of moment in replay"),
+        ("time", "bar time (UTC) - the as-of moment in replay"),
         ("px", "price = the bar's close"),
         ("SESS", "active session (Asia / London / NY)"),
-        ("POC", "Point of Control — most-traded price this session"),
-        ("VAH", "Value-Area High — top of the value zone (value_area_pct of volume)"),
-        ("VAL", "Value-Area Low — bottom of the value zone"),
+        ("POC", "Point of Control - most-traded price this session"),
+        ("VAH", "Value-Area High - top of the value zone (value_area_pct of volume)"),
+        ("VAL", "Value-Area Low - bottom of the value zone"),
         ("vol", "session cumulative volume so far"),
-        ("bar", "this bar's traded volume — tinted green (up bar) / red (down bar)"),
-        ("rvol", "relative volume = bar ÷ avg(last N bars); >1 = above average / spike"),
-        ("vexp", "volume expansion = avg(fast bars) ÷ avg(N bars); rising = ramping up"),
-        ("Δ", "delta = net signed volume over last N bars (+ buying / − selling)"),
-        ("state", "GRADE regime — IMPULSE/GRIND (±dir) / CONSOLIDATION / WHIPSAW / UNCLEAR"),
-        ("str", "strength = net ÷ range (−1..+1); the session-bias number (+ up / − down)"),
-        ("eff", "efficiency = |net| ÷ travel (0..1); how direct the path (progress axis)"),
-        ("acc", "acceptance = 1 − value-area fraction; fat POC reads high (acceptance axis)"),
-        ("CONSOL", "L2 tradeable base: VAH (green) / VAL (red) breakout levels · len bars · ago = bars since it ended"),
-        ("SESS H/L", "session structure — H/L raw extremes; sH/sL last CONFIRMED swing (BOS) high/low"),
+        ("SH", "session high - the session's raw high (green)"),
+        ("SL", "session low - the session's raw low (red)"),
+        ("bar", "this bar's traded volume - tinted green (up bar) / red (down bar)"),
+        ("rvol", "relative volume = bar / avg(last N bars); >1 = above average / spike"),
+        ("vexp", "volume expansion = avg(fast bars) / avg(N bars); rising = ramping up"),
+        ("d", "delta = net signed volume over last N bars (+ buying / - selling)"),
+        ("state", "GRADE regime - IMPULSE/GRIND (+-dir) / CONSOLIDATION / WHIPSAW / UNCLEAR"),
+        ("str", "strength = net / range (-1..+1); the session-bias number (+ up / - down)"),
+        ("eff", "efficiency = |net| / travel (0..1); how direct the path (progress axis)"),
+        ("acc", "acceptance = 1 - value-area fraction; fat POC reads high (acceptance axis)"),
+        ("CONSOL", "L2 tradeable base: VAH (green) / VAL (red) breakout levels - len bars - ago = bars since it ended"),
+        ("1min volume profile", "the 1m structure's volume profile (from STRUCT 1m): POC - window H/L - VAH/VAL value-area edges"),
     ]
-    out = [c("FIELDS", "1") + c("  — what each output shows", DIM), "",
-           c("SNAPSHOT", PHASE_C["SNAPSHOT"]) + c(" facts — boxed BY SOURCE: ", DIM) +
-           c("PRICE", PHASE_C["PRICE"]) + c(" (the bar) · ", DIM) +
-           c("PROFILE", PHASE_C["PROFILE"]) + c(" (volume-profile) · ", DIM) +
-           c("VOLUME", PHASE_C["VOLUME"]) + c(" (time-based volume) · ", DIM) +
-           c("STRUCT 5m/1m", PHASE_C["STRUCT 5m"]) + c(" (GRADE engine, L1 session + L2 1m — fractal) · ", DIM) +
-           c("CONSOL", PHASE_C["CONSOL"]) + c(" (the 1m base) · ", DIM) +
-           c("SESS H/L", PHASE_C["SESS H/L"]) + c(" (session raw + swing structure)", DIM)]
+    out = [c("FIELDS", "1") + c("  - what each output shows", DIM), "",
+           c("SNAPSHOT", PHASE_C["SNAPSHOT"]) + c(" facts - boxed BY SOURCE: ", DIM) +
+           c("PRICE", PHASE_C["PRICE"]) + c(" (the bar) - ", DIM) +
+           c("VOLUME", PHASE_C["VOLUME"]) + c(" (time-based volume) - ", DIM) +
+           c("5min volume profile", PHASE_C["5min volume profile"]) + c(" (volume-profile + session H/L) - ", DIM) +
+           c("STRUCT 5m/1m", PHASE_C["STRUCT 5m"]) + c(" (GRADE engine, L1 session + L2 1m - fractal) - ", DIM) +
+           c("CONSOL", PHASE_C["CONSOL"]) + c(" (the 1m base) - ", DIM) +
+           c("1min volume profile", PHASE_C["1min volume profile"]) + c(" (1m structure volume-profile levels)", DIM)]
     for k, v in rows:
         out.append("  " + c(k.ljust(6), WHT) + " " + c(v, DIM))
     out += ["",
-            (c("DECIDE", PHASE_C["DECIDE"]) + c(" · ", DIM) + c("MANAGE", PHASE_C["MANAGE"]) +
+            (c("DECIDE", PHASE_C["DECIDE"]) + c(" - ", DIM) + c("MANAGE", PHASE_C["MANAGE"]) +
              c("  pipeline stages", DIM)),
-            "  " + c("DECIDE", WHT) + c(" the VA-breakout Intent — direction + entry / stop / target", DIM),
-            "  " + c("MANAGE", WHT) + c(" trade state (arm / active / exit) — stub until phase 3", DIM),
+            "  " + c("DECIDE", WHT) + c(" the VA-breakout Intent - dir (L/S) + entry / stop / target (color-coded)", DIM),
+            "  " + c("MANAGE", WHT) + c(" trade state (entered / hold +-R / exit) - stub until phase 3", DIM),
             "",
-            c("  SCORE stage is hidden", DIM) + c(" — VA-breakout is a rule, not a weighted-signal system, so it", DIM),
+            c("  SCORE stage is hidden", DIM) + c(" - VA-breakout is a rule, not a weighted-signal system, so it", DIM),
             c("  scores nothing. The slot stays in the pipeline for future confluence scoring.", DIM)]
     return "\n".join(out)
 
@@ -437,8 +444,8 @@ def main():
     endpoint = args.url.rstrip("/") + "/api/replay/state"
     period = 1.0 / max(1.0, args.hz)
 
-    print(f"replay_monitor · {args.view} · watching {endpoint}")
-    print("  (run with --legend for a field guide · --view vertical|horizontal|snapshot) · waiting for replay…")
+    print(f"replay_monitor - {args.view} - watching {endpoint}")
+    print("  (run with --legend for a field guide - --view vertical|horizontal|snapshot) - waiting for replay...")
     was_active = last_asof = None
     was_active = False
     warned_down = False
@@ -449,32 +456,32 @@ def main():
         st = fetch(endpoint)
         if st is False:
             # Busy/slow poll (server is mid-compute, e.g. rebuilding from a session
-            # start). NOT a disconnect — skip this tick quietly, keep replay state.
+            # start). NOT a disconnect - skip this tick quietly, keep replay state.
             time.sleep(period)
             continue
         if st is None:
             misses += 1
             if misses >= MISS_LIMIT and not warned_down:
-                print("… server unreachable (is chart/server.py running?)")
+                print("... server unreachable (is chart/server.py running?)")
                 warned_down = True
             time.sleep(0.5)
             continue
         if warned_down:
-            print("… reconnected")
+            print("... reconnected")
         warned_down = False
         misses = 0
 
         active = bool(st.get("active"))
         if active and not was_active:
-            print("\n── replay initialised ──")
+            print("\n-- replay initialised --")
             if is_table:
                 print(top_border(phases))
-                print(rule(phases, "├", "┼", "┤"))
+                print(rule(phases))
             last_asof = None
         elif not active and was_active:
             if is_table:
-                print(rule(phases, "└", "┴", "┘"))
-            print("── replay ended ──\n")
+                print(rule(phases))
+            print("-- replay ended --\n")
         was_active = active
 
         if active:

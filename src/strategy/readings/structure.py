@@ -45,4 +45,6 @@ def read_structure(df, grade_cfg: dict | None = None) -> dict | None:
         "poc": g.poc,
         "vah": g.vah,                   # breakout level (long)
         "val": g.val,                   # breakout level (short)
+        "high": float(df["high"].max()),  # window extremes (the structure's range)
+        "low": float(df["low"].min()),
     }

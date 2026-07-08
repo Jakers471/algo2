@@ -90,7 +90,7 @@ strategy:
   # session. A RANGE leg (fat POC / narrow value area) is a consolidation base.
   consolidation:
     swing_frac: 0.20         # zigzag reversal threshold = swing_frac * session range (leg size)
-    base_method: grade_state # grade_state | va_frac — how a leg is judged a base (swap to A/B)
+    base_method: va_frac # grade_state | va_frac — how a leg is judged a base (swap to A/B)
     va_thr: 0.55             # (va_frac method only) value-area fraction below which a leg is a base
     min_leg_len: 5           # ignore legs shorter than this many bars (too small to be a base)
     max_age: 40              # ignore a base whose leg ended > this many bars ago (gone stale)

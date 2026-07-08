@@ -356,10 +356,8 @@ async function main() {
   });
   indicators.buildUI(document.getElementById('panel'));
 
-  // Click a session's span to overlay its H/VAH/POC/VAL/L levels (no module).
-  const sessionDetail = window.SessionDetail
-    ? window.SessionDetail.create({ chart, candleSeries, symbol: SYMBOL, config: CONFIG })
-    : null;
+  // Session-click levels are now a control-panel indicator (session_detail.js), driven
+  // by indicators.onData like every other overlay — no separate wiring needed.
 
   let firstLoad = true;
   let fullData = { candles: [] };
@@ -374,7 +372,6 @@ async function main() {
     fullData = data;
     render(candleSeries, data);
     indicators.onData(data, tf);
-    if (sessionDetail) sessionDetail.update(tf);
 
     // Restore the saved window on first load; keep the same window across a
     // timeframe switch; otherwise fit everything.
@@ -419,6 +416,11 @@ async function main() {
 
   let replayWindow = 120;
   let lastRenderIdx = -1;   // high-water mark of the last candle drawn (for O(1) stepping)
+  // Replay auto-follow: the loop scrolls the view to the latest bar every frame — which also
+  // re-fits the price scale, so you can't pan/zoom (it snaps back). We follow ONLY until you
+  // grab the chart; then new bars just append off-screen and your view (both axes) holds.
+  let replayFollow = true;
+  let expectedRange = null;   // the range WE set — used to tell our own move from the user's
   async function replayFrame(i) {
     const candles = fullData.candles || [];
     if (!candles.length) return '';
@@ -435,13 +437,10 @@ async function main() {
     const asof = candles[i].time;
     reportReplay({ active: true, symbol: SYMBOL, tf: current, asof });
     indicators.onData(slice, current, { asof });
-    if (sessionDetail) sessionDetail.update(current, { asof });
-    try {
-      chart.timeScale().setVisibleLogicalRange({
-        from: i - replayWindow,
-        to: i + Math.round(replayWindow * 0.08),
-      });
-    } catch (_) { /* ignore */ }
+    if (replayFollow) {
+      expectedRange = { from: i - replayWindow, to: i + Math.round(replayWindow * 0.08) };
+      try { chart.timeScale().setVisibleLogicalRange(expectedRange); } catch (_) { /* ignore */ }
+    }
     return replayLog(asof);
   }
 
@@ -455,7 +454,6 @@ async function main() {
           // Restore the full, live view.
           render(candleSeries, fullData);
           indicators.onData(fullData, current);
-          if (sessionDetail) sessionDetail.update(current);
           try { chart.timeScale().fitContent(); } catch (_) { /* ignore */ }
           const rb = document.getElementById('replayBtn');
           if (rb) rb.classList.remove('active');
@@ -473,6 +471,7 @@ async function main() {
     const rb = document.getElementById('replayBtn');
     if (rb) rb.classList.add('active');
     lastRenderIdx = -1;                        // first frame does a full setData, then O(1) steps
+    replayFollow = true; expectedRange = null; // (re-)entering replay resumes auto-follow
     reportReplay({ active: true, symbol: SYMBOL, tf: current, asof: null });
     replay.start(startIdx, n);
   }
@@ -487,6 +486,15 @@ async function main() {
 
   buttons = buildTimeframeBar(timeframes, current, select);
   chart.timeScale().subscribeVisibleTimeRangeChange(scheduleSave);
+  // During replay, the instant the user pans/zooms (visible range != the one WE set), stop
+  // auto-following so their view — and the price scale — stops snapping back to the latest bar.
+  chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+    if (!range || !replay || !replay.isActive() || !replayFollow) return;
+    const mine = expectedRange
+      && Math.abs(range.from - expectedRange.from) < 1
+      && Math.abs(range.to - expectedRange.to) < 1;
+    if (!mine) replayFollow = false;
+  });
   await select(current);
 }
 
