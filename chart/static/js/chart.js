@@ -418,11 +418,20 @@ async function main() {
   }
 
   let replayWindow = 120;
+  let lastRenderIdx = -1;   // high-water mark of the last candle drawn (for O(1) stepping)
   async function replayFrame(i) {
     const candles = fullData.candles || [];
     if (!candles.length) return '';
+    // Candle rendering: stepping forward one bar APPENDS that single bar (O(1)); only a
+    // jump/scrub re-loads the slice. Re-setData(all revealed bars) every frame was O(n)
+    // per frame -> O(n^2) as bars accumulate — the "slow once candles pile up" bug.
+    if (i === lastRenderIdx + 1) {
+      candleSeries.update(candles[i]);
+    } else {
+      candleSeries.setData(candles.slice(0, i + 1));
+    }
+    lastRenderIdx = i;
     const slice = { candles: candles.slice(0, i + 1) };
-    render(candleSeries, slice);
     const asof = candles[i].time;
     reportReplay({ active: true, symbol: SYMBOL, tf: current, asof });
     indicators.onData(slice, current, { asof });
@@ -442,6 +451,7 @@ async function main() {
         onFrame: replayFrame,
         onExit: () => {
           reportReplay({ active: false });
+          lastRenderIdx = -1;                 // next replay re-seeds with a full setData
           // Restore the full, live view.
           render(candleSeries, fullData);
           indicators.onData(fullData, current);
@@ -462,6 +472,7 @@ async function main() {
     const startIdx = range ? Math.max(0, Math.min(Math.floor(range.from), n - 1)) : 0;
     const rb = document.getElementById('replayBtn');
     if (rb) rb.classList.add('active');
+    lastRenderIdx = -1;                        // first frame does a full setData, then O(1) steps
     reportReplay({ active: true, symbol: SYMBOL, tf: current, asof: null });
     replay.start(startIdx, n);
   }
